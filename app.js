@@ -1,7 +1,6 @@
 
 (() => {
   'use strict';
-
   // ===== DOM =====
   const canvas = document.getElementById('game');
   if (!canvas) { console.error('canvas #game が見つかりません'); return; }
@@ -10,40 +9,54 @@
   const statusEl = document.getElementById('status');
 
   // ===== 基本定数 =====
-  const G = 0.6;                  // 重力
-  const MOVE = 2.2;               // プレイヤー横速度
-  const JUMP = 16;                // ジャンプ初速（高め）
-  const TILE = 54;                // タイルサイズ
-  const WORLD_WIDTH = 200;        // 横タイル数
-  const FLOOR_Y = 9;              // 地面のタイル行
+  const G = 0.6;        // 重力
+  const MOVE = 2.2;     // プレイヤー横速度
+  const JUMP = 16;      // ジャンプ初速（高め）
+  const TILE = 54;      // タイルサイズ
+  const WORLD_WIDTH = 200; // 横タイル数
+  const FLOOR_Y = 9;       // 地面のタイル行
 
-  // ===== BGM（ユーザー操作で開始） =====
+  // ===== BGM（ユーザー操作で開始・iPhone対応） =====
   let bgm, bgmReady = false, bgmStarted = false;
   function initBGM() {
-    bgm = new Audio('./bgm.mp3'); // 同フォルダ
+    // iOS対策：ここでは src を設定しない。Audio インスタンスだけ準備
+    bgm = new Audio();
     bgm.loop = true;
     bgm.volume = 0.35;
-    bgm.addEventListener('canplaythrough', () => { bgmReady = true; });
+    // canplaythrough は iOS では安定しないため ready は play 成功時に扱う
   }
-  function tryStartBGMOnce() {
-    if (bgmReady && !bgmStarted) {
-      bgm.play().then(() => { bgmStarted = true; })
-                .catch(err => console.warn('BGM再生に失敗:', err));
+  async function tryStartBGMOnce() {
+    if (bgmStarted) return;
+    try {
+      // ユーザー操作直後に src 設定→load→play をまとめて実行（iOS Safari推奨パターン）
+      if (!bgm.src) {
+        bgm.src = './bgm.mp3';
+        bgm.load();
+      }
+      await bgm.play();
+      bgmReady = true;
+      bgmStarted = true;
+      // 一度再生できたら一回限りのリスナーは不要
+      // （{ once: true }で追加しているため自動的に外れるが、念のため）
+      document.removeEventListener('pointerdown', tryStartBGMOnce, { once: true });
+      document.removeEventListener('touchstart', tryStartBGMOnce, { once: true });
+    } catch (err) {
+      console.warn('BGM再生に失敗:', err);
     }
   }
 
   // ===== 入力 =====
   const keys = { left: false, right: false, jump: false };
   window.addEventListener('keydown', e => {
-    if (e.code === 'ArrowLeft') keys.left = true;
+    if (e.code === 'ArrowLeft')  keys.left = true;
     if (e.code === 'ArrowRight') keys.right = true;
-    if (e.code === 'Space') keys.jump = true;
+    if (e.code === 'Space')      keys.jump = true;
     tryStartBGMOnce();
   });
   window.addEventListener('keyup', e => {
-    if (e.code === 'ArrowLeft') keys.left = false;
+    if (e.code === 'ArrowLeft')  keys.left = false;
     if (e.code === 'ArrowRight') keys.right = false;
-    if (e.code === 'Space') keys.jump = false;
+    if (e.code === 'Space')      keys.jump = false;
   });
 
   // タブレット操作（長押し対応）
@@ -52,20 +65,25 @@
     if (!el) return;
     const down = ev => { ev.preventDefault(); tryStartBGMOnce(); keys[keyName] = true; el.classList.add('active'); };
     const up   = ev => { ev.preventDefault(); keys[keyName] = false; el.classList.remove('active'); };
-    el.addEventListener('pointerdown', down,  { passive: false });
-    el.addEventListener('pointerup',   up,    { passive: false });
-    el.addEventListener('pointerleave',up,    { passive: false });
-    el.addEventListener('pointercancel',up,   { passive: false });
-    el.addEventListener('touchstart',  down,  { passive: false });
-    el.addEventListener('touchend',    up,    { passive: false });
-    el.addEventListener('touchcancel', up,    { passive: false });
+
+    el.addEventListener('pointerdown', down, { passive: false });
+    el.addEventListener('pointerup', up, { passive: false });
+    el.addEventListener('pointerleave', up, { passive: false });
+    el.addEventListener('pointercancel', up, { passive: false });
+
+    el.addEventListener('touchstart', down, { passive: false });
+    el.addEventListener('touchend', up, { passive: false });
+    el.addEventListener('touchcancel', up, { passive: false });
   }
   bindTouchHold('btn-left', 'left');
   bindTouchHold('btn-right','right');
   bindTouchHold('btn-jump', 'jump');
+
   canvas.addEventListener('touchstart', ev => ev.preventDefault(), { passive: false });
   canvas.addEventListener('touchmove',  ev => ev.preventDefault(), { passive: false });
   canvas.addEventListener('touchend',   ev => ev.preventDefault(), { passive: false });
+
+  // 初回ジェスチャでBGM開始
   document.addEventListener('pointerdown', tryStartBGMOnce, { once: true });
   document.addEventListener('touchstart',  tryStartBGMOnce, { once: true });
 
@@ -74,14 +92,15 @@
   function loadImageSafe(file) {
     return new Promise(resolve => {
       const img = new Image();
-      img.onload  = () => resolve({ img, ok: true,  file });
+      img.onload = () => resolve({ img, ok: true, file });
       img.onerror = () => { console.warn('画像読込失敗:', ASSET_BASE + file); resolve({ img, ok: false, file }); };
       img.src = ASSET_BASE + file;
     });
   }
+
   let sprites = {
     player: { img: null, ok: false },
-    enemies: [],                 // [{img, ok, file}, ...]
+    enemies: [], // [{img, ok, file}, ...]
     boss:   { img: null, ok: false },
     mio:    { img: null, ok: false }
   };
@@ -93,6 +112,7 @@
     if (i % 15 === 5)  platforms.push({ x: i * TILE, y: (FLOOR_Y - 2) * TILE, w: TILE, h: TILE });
     if (i % 23 === 10) platforms.push({ x: i * TILE, y: (FLOOR_Y - 4) * TILE, w: TILE, h: TILE });
   }
+
   const coins = [];
   for (let i = 4; i < WORLD_WIDTH; i += 6) {
     coins.push({ x: i * TILE + TILE / 2, y: (FLOOR_Y - 3) * TILE + 10, r: 10, taken: false });
@@ -132,7 +152,7 @@
 
   // ===== ボス（落下→ぴょんぴょんジャンプ） =====
   const BOSS_SPEED = 2.4;
-  const BOSS_JUMP  = 14;
+  const BOSS_JUMP = 14;
   const BOSS_HOP_COOLDOWN = 45;
   let boss = {
     spawned: false, state: 'sleep', x: 0, y: 0,
@@ -150,6 +170,7 @@
   function updateBoss() {
     if (!boss.spawned || boss.state === 'dead') return;
     boss.inv = Math.max(0, boss.inv - 1);
+
     if (boss.state === 'drop') {
       boss.vy += G; boss.y += boss.vy;
       const a = { x: boss.x, y: boss.y, w: boss.w, h: boss.h };
@@ -166,6 +187,7 @@
       boss.vx = boss.facing === -1 ? -boss.speed : boss.speed;
       boss.x += boss.vx;
       boss.onGround = false;
+
       const a = { x: boss.x, y: boss.y, w: boss.w, h: boss.h };
       for (const p of platforms) {
         if (rectIntersect(a, p)) {
@@ -175,10 +197,11 @@
           if (fromTop) {
             boss.y = p.y - boss.h; boss.vy = 0; boss.onGround = true;
             if (boss.hopCD === 0) { boss.vy = -BOSS_JUMP; boss.hopCD = BOSS_HOP_COOLDOWN; }
-          } else if (fromLeft)  { boss.x = p.x - boss.w; boss.facing = -1; }
-          else if (fromRight)   { boss.x = p.x + p.w;  boss.facing =  1; }
+          } else if (fromLeft) { boss.x = p.x - boss.w; boss.facing = -1; }
+          else if (fromRight)  { boss.x = p.x + p.w; boss.facing = 1; }
         }
       }
+
       // プレイヤー当たり
       const pb = { x: player.x, y: player.y, w: player.w, h: player.h };
       if (rectIntersect(pb, a)) {
@@ -206,7 +229,7 @@
     if (res.ok && res.img.complete && res.img.naturalWidth > 0) {
       ctx.save();
       if (facing === -1) { ctx.translate(x + w, y); ctx.scale(-1, 1); ctx.drawImage(res.img, 0, 0, w, h); }
-      else               { ctx.drawImage(res.img, x, y, w, h); }
+      else { ctx.drawImage(res.img, x, y, w, h); }
       ctx.restore();
     } else { ctx.fillStyle = '#2ecc71'; ctx.fillRect(x, y, w, h); }
   }
@@ -215,26 +238,28 @@
     if (res && res.ok && res.img.complete && res.img.naturalWidth > 0) {
       ctx.save();
       if (e.facing === -1) { ctx.translate(x + e.w, y); ctx.scale(-1, 1); ctx.drawImage(res.img, 0, 0, e.w, e.h); }
-      else                 { ctx.drawImage(res.img, x, y, e.w, e.h); }
+      else { ctx.drawImage(res.img, x, y, e.w, e.h); }
       ctx.restore();
     } else { ctx.fillStyle = '#c0392b'; ctx.fillRect(x, y, e.w, e.h); }
   }
   function drawBossSafe() {
     if (!boss.spawned || boss.state === 'dead') return;
     const res = sprites.boss; const x = boss.x - camera.x; const y = boss.y - camera.y;
+
     if (boss.state === 'drop') { // 影
       const groundY = FLOOR_Y * TILE - camera.y + 4;
-      const height   = (groundY - y - boss.h);
-      const r        = clamp(20 + (height > 0 ? Math.min(60, height / 6) : 0), 20, 80);
+      const height = (groundY - y - boss.h);
+      const r = clamp(20 + (height > 0 ? Math.min(60, height / 6) : 0), 20, 80);
       ctx.save(); ctx.globalAlpha = 0.25; ctx.fillStyle = '#000';
       ctx.beginPath(); ctx.ellipse(x + boss.w / 2, groundY, r, r * 0.5, 0, 0, Math.PI * 2); ctx.fill();
       ctx.restore();
     }
+
     const flashing = boss.inv > 0 && (boss.inv % 8 < 4);
     ctx.save(); if (flashing) ctx.globalAlpha = 0.5;
     if (res.ok && res.img.complete && res.img.naturalWidth > 0) {
       if (boss.facing === -1) { ctx.translate(x + boss.w, y); ctx.scale(-1, 1); ctx.drawImage(res.img, 0, 0, boss.w, boss.h); }
-      else                    { ctx.drawImage(res.img, x, y, boss.w, boss.h); }
+      else { ctx.drawImage(res.img, x, y, boss.w, boss.h); }
     } else { ctx.fillStyle = '#6c3483'; ctx.fillRect(x, y, boss.w, boss.h); }
     ctx.restore();
   }
@@ -272,10 +297,10 @@
         const fromTop   = (a.y + a.h) - p.y < 20 && player.vy > 0;
         const fromLeft  = (a.x + a.w) - p.x < 20 && player.vx > 0;
         const fromRight = (p.x + p.w) - a.x < 20 && player.vx < 0;
-        if (fromTop)       { player.y = p.y - player.h; player.vy = 0; player.onGround = true; }
-        else if (fromLeft) { player.x = p.x - player.w; }
+        if (fromTop)      { player.y = p.y - player.h; player.vy = 0; player.onGround = true; }
+        else if (fromLeft){ player.x = p.x - player.w; }
         else if (fromRight){ player.x = p.x + p.w; }
-        else               { player.y = p.y + p.h; player.vy = 0; }
+        else              { player.y = p.y + p.h; player.vy = 0; }
       }
     });
 
@@ -299,7 +324,7 @@
       if (rectIntersect(a, e)) {
         const stomp = player.vy > 0 && (player.y + player.h) - e.y < 24;
         if (stomp) { player.vy = -JUMP * 0.6; e.x = -99999; e.vx = 0; if (statusEl) statusEl.textContent = 'やっつけた！'; }
-        else       { player.x = 2 * TILE; player.y = (FLOOR_Y - 1) * TILE - player.h; player.vx = 0; player.vy = 0; if (statusEl) statusEl.textContent = 'いたっ！もう一度'; }
+        else { player.x = 2 * TILE; player.y = (FLOOR_Y - 1) * TILE - player.h; player.vx = 0; player.vy = 0; if (statusEl) statusEl.textContent = 'いたっ！もう一度'; }
       }
     });
 
@@ -314,7 +339,14 @@
       finished = true; victory.active = true; victory.t = 0;
       if (statusEl) statusEl.textContent = `ゴール！コイン ${coinCount} 枚`;
       setTimeout(() => alert(`ゴール！がんばったね！\nコイン ${coinCount} 枚`), 100);
-      if (bgmStarted) { const fade = setInterval(() => { bgm.volume = Math.max(0, bgm.volume - 0.05); if (bgm.volume <= 0) { clearInterval(fade); bgm.pause(); } }, 100); }
+
+      // BGM フェードアウト
+      if (bgmStarted) {
+        const fade = setInterval(() => {
+          bgm.volume = Math.max(0, bgm.volume - 0.05);
+          if (bgm.volume <= 0) { clearInterval(fade); bgm.pause(); }
+        }, 100);
+      }
     }
 
     // カメラ
@@ -374,11 +406,20 @@
     drawPlayerSafe(player.x - camera.x, player.y - camera.y, player.w, player.h, player.facing);
 
     // 勝利演出（mio）
-    if (victory.active) { const duration = 180; const t = clamp(victory.t / duration, 0, 1); const k = easeOutCubic(t); drawMioVictorySafe(k); }
+    if (victory.active) {
+      const duration = 180; const t = clamp(victory.t / duration, 0, 1); const k = easeOutCubic(t);
+      drawMioVictorySafe(k);
+    }
   }
 
   // 雲
-  function cloud(x, y) { ctx.beginPath(); ctx.arc(x, y, 28, 0, Math.PI * 2); ctx.arc(x + 26, y + 10, 22, 0, Math.PI * 2); ctx.arc(x - 26, y + 10, 22, 0, Math.PI * 2); ctx.fill(); }
+  function cloud(x, y) {
+    ctx.beginPath();
+    ctx.arc(x, y, 28, 0, Math.PI * 2);
+    ctx.arc(x + 26, y + 10, 22, 0, Math.PI * 2);
+    ctx.arc(x - 26, y + 10, 22, 0, Math.PI * 2);
+    ctx.fill();
+  }
 
   // ===== 起動 =====
   (async () => {
