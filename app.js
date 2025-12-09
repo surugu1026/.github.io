@@ -44,7 +44,7 @@
 
   // ===== 画像読み込み =====
   const playerImg = new Image(); playerImg.src = 'Image.png';
-  const enemyOrder = ['mama', 'kairi', 'pocha', 'papa'];
+  const enemyOrder = ['mama', 'kairi', 'pocha', 'papa']; // 出現順
   const enemySprites = {
     mama:  (() => { const i = new Image(); i.src = 'mama.png';  return i; })(),
     kairi: (() => { const i = new Image(); i.src = 'kairi.png'; return i; })(),
@@ -76,8 +76,8 @@
     facing: 1
   };
 
-  // ===== 敵（順番：mama → kairi → pocha → papa） =====
-  const spawnX = [18 * TILE, 45 * TILE, 75 * TILE, 110 * TILE];
+  // ===== 敵（順番固定） =====
+  const spawnX = [18 * TILE, 45 * TILE, 75 * TILE, 110 * TILE]; // mama,kairi,pocha,papa の出現地点
   let nextEnemyIdx = 0;
   const enemies = []; // {x,y,w,h,vx,facing,img}
 
