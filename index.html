@@ -1,42 +1,46 @@
+
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Maze Adventure</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ちびジャンプ！(Mario-like)</title>
   styles.css
+  <link rel="stylesheet" href="styles.css">
+クセシビリティ） -->
+  <noscript>このゲームを遊ぶにはJavaScriptを有効にしてください。</noscript>
 </head>
 <body>
-  <header class="hud">
-    <div class="brand">Maze Adventure</div>
-    <div class="stats">
-      <span>レベル: <strong id="level">1</strong></span>
-      <span>タイム: <strong id="time">00.0</strong>s</span>
-      <span>ベスト: <strong id="best">—</strong>s</span>
-    </div>
-    <div class="actions">
-      <button id="btnStart" class="primary">スタート</button>
-      <button id="btnNext" class="secondary" disabled>次のレベル</button>
-      <button id="btnReset" class="ghost">ベストタイム削除</button>
+  <header class="topbar">
+    <h1>ちびジャンプ！</h1>
+    <div class="hud">
+      <span id="coins">🪙 0</span>
+      <span id="status">準備OK</span>
     </div>
   </header>
 
-  <main>
-    <canvas id="maze" width="480" height="480" aria-label="迷路キャンバス"></canvas>
+  <main class="game-wrap">
+    <!-- 操作ヘルプ（スクリーンリーダー配慮） -->
+    <p class="sr-only" aria-live="polite">
+      左右キーで移動、スペースキーでジャンプ。コインを集めてゴール旗へ！
+    </p>
 
-    <!-- 仮想スティック（スマホ用） -->
-    <div class="joystick" id="joystick">
-      <button class="joy" data-dir="up">▲</button>
-      <div class="joy-middle">
-        <button class="joy" data-dir="left">◀</button>
-        <button class="joy" data-dir="right">▶</button>
-      </div>
-      <button class="joy" data-dir="down">▼</button>
+    <canvas id="game" width="960" height="540" role="img" aria-label="横スクロールゲームのプレイ画面">
+      お使いのブラウザはCanvasに対応していないようです。最新のChrome/Edge/Safariでお試しください。
+    </canvas>
+
+    <!-- モバイル向けタッチ操作 -->
+    <div class="touch-controls" aria-hidden="true">
+      <button id="btn-left" class="btn">◀︎</button>
+      <button id="btn-jump" class="btn">⤴︎</button>
+      <button id="btn-right" class="btn">▶︎</button>
     </div>
   </main>
 
-  <footer class="note">
-    操作: 矢印キー / WASD、スマホは仮想スティック。ゴールに到達すると次レベルに進めます。
+  <footer class="footer">
+    <small>© 2025 Komiya Family</small>
   </footer>
 
-  <script src="app.js"></script>
+  app.js</script>
+</body>
+</html>
