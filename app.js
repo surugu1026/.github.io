@@ -105,7 +105,7 @@
       x,
       y: (FLOOR_Y - 1) * TILE - h, // 地面接地
       w, h,
-      vx: 1.1,
+      vx: 2,
       facing: -1,
       slotIndex: nextEnemyIndex    // スプライト選択用インデックス
     });
