@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Maze Adventure</title>
+  styles.css
+</head>
+<body>
+  <header class="hud">
+    <div class="brand">Maze Adventure</div>
+    <div class="stats">
+      <span>レベル: <strong id="level">1</strong></span>
+      <span>タイム: <strong id="time">00.0</strong>s</span>
+      <span>ベスト: <strong id="best">—</strong>s</span>
+    </div>
+    <div class="actions">
+      <button id="btnStart" class="primary">スタート</button>
+      <button id="btnNext" class="secondary" disabled>次のレベル</button>
+      <button id="btnReset" class="ghost">ベストタイム削除</button>
+    </div>
+  </header>
+
+  <main>
+    <canvas id="maze" width="480" height="480" aria-label="迷路キャンバス"></canvas>
+
+    <!-- 仮想スティック（スマホ用） -->
+    <div class="joystick" id="joystick">
+      <button class="joy" data-dir="up">▲</button>
+      <div class="joy-middle">
+        <button class="joy" data-dir="left">◀</button>
+        <button class="joy" data-dir="right">▶</button>
+      </div>
+      <button class="joy" data-dir="down">▼</button>
+    </div>
+  </main>
+
+  <footer class="note">
+    操作: 矢印キー / WASD、スマホは仮想スティック。ゴールに到達すると次レベルに進めます。
+  </footer>
+
+  <script src="app.js"></script>
