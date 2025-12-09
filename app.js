@@ -11,11 +11,26 @@
 
   // ===== 定数（ジャンプ高め／基礎設定） =====
   const G = 0.6;            // 重力
-  const MOVE = 2.2;         // 横移動速度
+  const MOVE = 2.2;         // 横移動速度（プレイヤー）
   const JUMP = 16;          // ジャンプ初速（高め）
   const TILE = 54;          // タイルサイズ
   const WORLD_WIDTH = 200;  // 横タイル数
   const FLOOR_Y = 9;        // 地面タイル行
+
+  // ===== BGM 制御（autoplay対策：ユーザー操作で開始） =====
+  let bgm, bgmReady = false, bgmStarted = false;
+  function initBGM() {
+    bgm = new Audio('./bgm.mp3'); // 同じフォルダに置く
+    bgm.loop = true;
+    bgm.volume = 0.35;
+    bgm.addEventListener('canplaythrough', () => { bgmReady = true; });
+  }
+  function tryStartBGMOnce() {
+    if (bgmReady && !bgmStarted) {
+      bgm.play().then(() => { bgmStarted = true; })
+                .catch(err => console.warn('BGM再生に失敗:', err));
+    }
+  }
 
   // ===== 入力（キーボード） =====
   const keys = { left: false, right: false, jump: false };
@@ -66,21 +81,7 @@
   canvas.addEventListener('touchmove',  (ev) => ev.preventDefault(), { passive: false });
   canvas.addEventListener('touchend',   (ev) => ev.preventDefault(), { passive: false });
 
-  // ===== BGM 制御（autoplay対策：ユーザー操作で開始） =====
-  let bgm, bgmReady = false, bgmStarted = false;
-  function initBGM() {
-    bgm = new Audio('./bgm.mp3'); // 同じフォルダに置く
-    bgm.loop = true;
-    bgm.volume = 0.35;
-    bgm.addEventListener('canplaythrough', () => { bgmReady = true; });
-  }
-  function tryStartBGMOnce() {
-    if (bgmReady && !bgmStarted) {
-      bgm.play().then(() => { bgmStarted = true; })
-                .catch(err => console.warn('BGM再生に失敗:', err));
-    }
-  }
-  // 画面タップでも1度だけ開始
+  // 画面タップでも1度だけBGM開始
   document.addEventListener('pointerdown', tryStartBGMOnce, { once: true });
   document.addEventListener('touchstart',  tryStartBGMOnce, { once: true });
 
@@ -103,6 +104,7 @@
   let sprites = {
     player: { img: null, ok: false },
     enemies: [],   // [{img, ok, file}, ...]
+    boss:   { img: null, ok: false },
     mio:    { img: null, ok: false }
   };
 
@@ -144,7 +146,7 @@
     const w = 52 * 2; // 2倍
     const h = 52 * 2; // 2倍
 
-    const baseSpeed = 1.8;               // ベース速度（速め）
+    const baseSpeed = 1.8;                 // ベース速度（速め）
     const accel     = 0.2 * nextEnemyIndex; // 後半ほど速い
     const vx        = baseSpeed + accel;
 
@@ -176,6 +178,135 @@
   let coinCount = 0;
   let finished = false;
   const victory = { active: false, t: 0 };
+
+  // ===== ボス（落下→ぴょんぴょんジャンプ→撃破） =====
+  const BOSS_SPEED = 2.4;         // 水平移動速度
+  const BOSS_JUMP  = 14;          // ジャンプ初速
+  const BOSS_HOP_COOLDOWN = 45;   // 次ジャンプまでの待ちフレーム（約0.75秒@60fps）
+
+  let boss = {
+    spawned: false,
+    state: 'sleep',         // 'sleep' | 'drop' | 'hop' | 'dead'
+    x: 0, y: 0,
+    w: 96, h: 96,
+    vx: 0, vy: 0,
+    speed: BOSS_SPEED,
+    hp: 3,
+    inv: 0,                 // 無敵フレーム（点滅）
+    facing: -1,
+    onGround: false,
+    hopCD: 0
+  };
+
+  function spawnBossIfNearGoal() {
+    if (!boss.spawned && player.x > goal.x - TILE * 12) {
+      boss.spawned = true;
+      boss.state = 'drop';
+      boss.x = goal.x - TILE * 6;           // ゴール手前の上空
+      boss.y = (FLOOR_Y - 6) * TILE - 400;  // 高くから落とす
+      boss.vx = 0;
+      boss.vy = 2;
+      boss.hp = 3;
+      boss.inv = 0;
+      boss.onGround = false;
+      boss.hopCD = 0;
+      boss.facing = -1;
+      statusEl && (statusEl.textContent = 'ボス出現！');
+    }
+  }
+
+  function updateBoss() {
+    if (!boss.spawned || boss.state === 'dead') return;
+
+    boss.inv = Math.max(0, boss.inv - 1);
+
+    if (boss.state === 'drop') {
+      // 落下
+      boss.vy += G;
+      boss.y  += boss.vy;
+
+      // 地面着地判定
+      const a = { x: boss.x, y: boss.y, w: boss.w, h: boss.h };
+      for (const p of platforms) {
+        if (rectIntersect(a, p)) {
+          const fromTop = (a.y + a.h) - p.y < 28 && boss.vy > 0;
+          if (fromTop) {
+            boss.y = p.y - boss.h;
+            boss.vy = 0;
+            boss.onGround = true;
+            boss.state = 'hop';     // 歩行ではなくジャンプモードへ
+            boss.hopCD = 0;         // すぐ初回ジャンプ可
+            break;
+          }
+        }
+      }
+    } else if (boss.state === 'hop') {
+      // ジャンプ・移動更新
+      boss.vy += G;                 // 空中時の重力
+      boss.y  += boss.vy;
+
+      boss.hopCD = Math.max(0, boss.hopCD - 1);
+
+      // プレイヤー方向へ向き
+      boss.facing = (player.x < boss.x) ? -1 : 1;
+
+      // 水平移動（空中でも前進）
+      boss.vx = boss.facing === -1 ? -boss.speed : boss.speed;
+      boss.x += boss.vx;
+
+      // 地面との当たり
+      boss.onGround = false;
+      const a = { x: boss.x, y: boss.y, w: boss.w, h: boss.h };
+      for (const p of platforms) {
+        if (rectIntersect(a, p)) {
+          const fromTop   = (a.y + a.h) - p.y < 28 && boss.vy > 0;
+          const fromLeft  = (a.x + a.w) - p.x < 20 && boss.vx > 0;
+          const fromRight = (p.x + p.w) - a.x < 20 && boss.vx < 0;
+
+          if (fromTop) { // 接地
+            boss.y = p.y - boss.h;
+            boss.vy = 0;
+            boss.onGround = true;
+
+            // クールダウンが切れていれば再ジャンプ
+            if (boss.hopCD === 0) {
+              boss.vy = -BOSS_JUMP;
+              boss.hopCD = BOSS_HOP_COOLDOWN;
+            }
+          } else if (fromLeft) {   // 壁で反転
+            boss.x = p.x - boss.w; boss.facing = -1;
+          } else if (fromRight) {
+            boss.x = p.x + p.w;    boss.facing =  1;
+          }
+        }
+      }
+
+      // プレイヤーとの当たり
+      const pb = { x: player.x, y: player.y, w: player.w, h: player.h };
+      if (rectIntersect(pb, a)) {
+        const stomp = player.vy > 0 && (player.y + player.h) - boss.y < 28 && boss.inv === 0;
+        if (stomp) {
+          // 踏みつけダメージ
+          player.vy = -JUMP * 0.65;
+          boss.hp -= 1;
+          boss.inv = 40; // 短い無敵
+          boss.x += (player.x < boss.x ? TILE : -TILE); // ノックバック
+          statusEl && (statusEl.textContent = `ボスにダメージ！残り ${boss.hp}`);
+          if (boss.hp <= 0) {
+            boss.state = 'dead';
+            boss.y = -99999; // 退場
+            statusEl && (statusEl.textContent = 'ボス撃破！');
+          }
+        } else {
+          // プレイヤー被弾（優しめリセット）
+          player.x = 2 * TILE;
+          player.y = (FLOOR_Y - 1) * TILE - player.h;
+          player.vx = 0; player.vy = 0;
+          statusEl && (statusEl.textContent = 'ボスに当たった！もう一度');
+        }
+      }
+    }
+  }
 
   // ===== ユーティリティ =====
   const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
@@ -220,6 +351,49 @@
       ctx.fillStyle = '#c0392b';
       ctx.fillRect(screenX, screenY, e.w, e.h);
     }
+  }
+
+  function drawBossSafe() {
+    if (!boss.spawned || boss.state === 'dead') return;
+
+    const res = sprites.boss;
+    const x = boss.x - camera.x;
+    const y = boss.y - camera.y;
+
+    // 落下中の影（地面に近いほど大きく・濃く）
+    if (boss.state === 'drop') {
+      const groundY = FLOOR_Y * TILE - camera.y + 4;
+      const height   = (groundY - y - boss.h);
+      const r        = clamp(20 + (height > 0 ? Math.min(60, height / 6) : 0), 20, 80);
+
+      ctx.save();
+      ctx.globalAlpha = 0.25;
+      ctx.fillStyle = '#000';
+      ctx.beginPath();
+      ctx.ellipse(x + boss.w / 2, groundY, r, r * 0.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // ダメージ中の点滅
+    const flashing = boss.inv > 0 && (boss.inv % 8 < 4);
+    ctx.save();
+    if (flashing) ctx.globalAlpha = 0.5;
+
+    if (res.ok && res.img.complete && res.img.naturalWidth > 0) {
+      if (boss.facing === -1) {
+        ctx.translate(x + boss.w, y);
+        ctx.scale(-1, 1);
+        ctx.drawImage(res.img, 0, 0, boss.w, boss.h);
+      } else {
+        ctx.drawImage(res.img, x, y, boss.w, boss.h);
+      }
+    } else {
+      // 画像が無い場合の代替
+      ctx.fillStyle = '#6c3483';
+      ctx.fillRect(x, y, boss.w, boss.h);
+    }
+    ctx.restore();
   }
 
   function drawMioVictorySafe(k) {
@@ -327,7 +501,11 @@
       }
     });
 
-    // ゴール判定
+    // ゴール直前のボス出現＆更新
+    spawnBossIfNearGoal();
+    updateBoss();
+
+    // ゴール判定（ボス撃破後でも到達可）
     const goalRect = { x: goal.x - 10, y: goal.y, w: goal.w + 20, h: goal.h };
     const a = { x: player.x, y: player.y, w: player.w, h: player.h };
     if (rectIntersect(a, goalRect)) {
@@ -400,6 +578,9 @@
       drawEnemySafe(e);
     });
 
+    // ボス（影＋本体描画）
+    drawBossSafe();
+
     // ゴール旗
     if (goal.x + goal.w >= camera.x && goal.x <= camera.x + camera.w) {
       ctx.fillStyle = '#555';
@@ -440,11 +621,13 @@
 
     const playerRes  = await loadImageSafe('Image.png');
     const enemiesRes = await Promise.all(enemyOrderFiles.map(f => loadImageSafe(f)));
+    const bossRes    = await loadImageSafe('boss.png');
     const mioRes     = await loadImageSafe('mio.png');
 
     sprites = {
       player:  playerRes,
       enemies: enemiesRes,
+      boss:    bossRes,
       mio:     mioRes
     };
 
@@ -452,4 +635,3 @@
     requestAnimationFrame(update);
   })();
 
-})();
