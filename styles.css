@@ -1,79 +1,50 @@
+
 :root {
-  --bg: #0f1226;
-  --panel: #171a34;
-  --text: #e7ebff;
-  --accent: #6bd1ff;     /* ゴール */
-  --player: #ff7b7b;     /* プレイヤー */
-  --wall: #36416b;       /* 壁 */
-  --path: #232746;       /* 通路 */
-  --btn-primary: #37c879;
-  --btn-secondary: #5b7cff;
+  --bg: #87CEEB;      /* 空色 */
+  --ground: #3b2f2f;  /* 地面色 */
+  --ui: #ffffff;
+  --accent: #ffcc00;  /* コイン色 */
+  --enemy: #c0392b;
+  --player: #2ecc71;
 }
+
 * { box-sizing: border-box; }
-html, body {
-  height: 100%;
-  margin: 0;
-  background: radial-gradient(1200px circle at 10% 10%, #121538 0%, var(--bg) 60%);
-  color: var(--text);
-  font-family: "Segoe UI", "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
-}
+html, body { height: 100%; margin: 0; }
+body { font-family: system-ui, "Segoe UI", "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", Meiryo, sans-serif; background: var(--bg); }
 
-.hud {
-  display: grid;
-  grid-template-columns: 1fr auto auto;
-  gap: 1rem;
-  align-items: center;
-  padding: 0.75rem 1rem;
-  background: linear-gradient(180deg, #1b1e3b 0%, var(--panel) 100%);
-  border-bottom: 1px solid #232746;
+.topbar {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: .5rem 1rem; background: rgba(0,0,0,0.2); color: var(--ui);
+  backdrop-filter: blur(4px);
 }
-.brand { font-weight: 700; letter-spacing: 0.4px; }
-.stats span { margin-right: 1rem; }
+.topbar h1 { font-size: 1.1rem; margin: 0; }
+.hud span { margin-left: 1rem; }
 
-.actions button {
-  margin-left: 0.4rem;
-  padding: 0.5rem 0.8rem;
-  border-radius: 8px; border: none; cursor: pointer;
-  color: #fff; font-weight: 600;
-}
-.primary { background: var(--btn-primary); }
-.secondary { background: var(--btn-secondary); }
-.ghost { background: transparent; border: 1px solid #495081; color:#cfd7ff; }
-
-main {
+.game-wrap {
   display: grid; place-items: center;
-  padding: 1rem;
+  padding: .5rem;
 }
-#maze {
-  max-width: 92vw;
-  max-height: 62vh;
-  background: var(--panel);
-  border: 2px solid #2a2f55;
-  border-radius: 12px;
-  box-shadow: 0 10px 24px rgba(0,0,0,0.35);
+canvas#game {
+  border: 6px solid #fff; border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,.25);
+  max-width: 96vw; height: auto; background: linear-gradient(#87CEEB 60%, #b0e0e6);
 }
 
-/* 仮想スティック */
-.joystick {
-  margin-top: 1rem;
-  display: grid;
-  grid-template-rows: auto auto auto;
-  gap: 0.5rem;
-  user-select: none;
+.touch-controls {
+  margin-top: .75rem; display: none; gap: .5rem;
 }
-.joy-middle { display: grid; grid-template-columns: auto auto; gap: 0.5rem; }
-.joy {
-  width: 64px; height: 64px;
-  border-radius: 12px; border: 1px solid #4a507a;
-  background: #1f2448; color: #e7ebff; font-size: 1.25rem;
-  box-shadow: 0 6px 16px rgba(0,0,0,0.3);
+.touch-controls .btn {
+  font-size: 1.5rem; padding: .6rem 1rem; border-radius: 10px; border: none;
+  background: rgba(255,255,255,.85); box-shadow: 0 4px 12px rgba(0,0,0,.2);
 }
-.joy:active { background: #2a3060; }
+.footer { text-align: center; color: #fff; padding: .5rem; }
 
-/* スマホでのみ表示 */
-@media (min-width: 768px) {
-  .joystick { display: none; }
+@media (max-width: 768px) {
+  .touch-controls { display: flex; justify-content: center; }
+  .topbar h1 { font-size: 1rem; }
 }
 
-/* アクセシビリティ */
-button:focus { outline: 2px solid #a5c7ff; }
+/* スクリーンリーダー専用テキスト */
+.sr-only {
+  position: absolute; width: 1px; height: 1px;
+  padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0;
+}
