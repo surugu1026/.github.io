@@ -6,9 +6,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>ちびジャンプ！(Mario-like)</title>
 
-  <link rel="stylesheet" href="styles.css">
+  <!-- CSS 正しくリンク -->
+  <link rel="stylesheet" href="styles.css" />
 
-  <noscript>このゲームを遊ぶにはJavaScriptを有効にしてください。</noscript>
+e.png
+  <link rel="preload" as="image" href="mama.png" />
+oad" as="image" href="papa.png" />
+ptを有効にしてください。</noscript>
 </head>
 <body>
   <header class="topbar">
@@ -20,7 +24,6 @@
   </header>
 
   <main class="game-wrap">
-    <!-- 操作ヘルプ（スクリーンリーダー配慮） -->
     <p class="sr-only" aria-live="polite">
       左右キーで移動、スペースキーでジャンプ。コインを集めてゴール旗へ！
     </p>
@@ -31,9 +34,9 @@
 
     <!-- モバイル向けタッチ操作 -->
     <div class="touch-controls" aria-hidden="true">
-      <button id="btn-left" class="btn">◀︎</button>
-      <button id="btn-jump" class="btn">⤴︎</button>
-      <button id="btn-right" class="btn">▶︎</button>
+      <button id="btn-left" class="btn" title="左へ">◀︎</button>
+      <button id="btn-jump" class="btn" title="ジャンプ">⤴︎</button>
+      <button id="btn-right" class="btn" title="右へ">▶︎</button>
     </div>
   </main>
 
@@ -41,7 +44,7 @@
     <small>© 2025 Komiya Family</small>
   </footer>
 
-  
-<script src="app.js"></script>
+  <!-- JS を正しく読み込み -->
+  app.js</script>
 </body>
 </html>
