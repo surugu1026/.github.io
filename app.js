@@ -12,7 +12,7 @@
   // ===== 定数 =====
   const G = 0.6;            // 重力
   const MOVE = 2.2;         // 横移動速度
-  const JUMP = 10.5;        // ジャンプ初速
+  const JUMP = 16;        // ジャンプ初速
   const TILE = 54;          // タイルサイズ
   const WORLD_WIDTH = 200;  // 横タイル数
   const FLOOR_Y = 9;        // 地面タイル行
