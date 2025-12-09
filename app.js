@@ -86,13 +86,11 @@ function spawnNextEnemy() {
   if (nextEnemyIndex >= enemyOrder.length) return;
   const key = enemyOrder[nextEnemyIndex];
   const x = spawnX[nextEnemyIndex];
-- const w = 52, h = 52;
-+ const w = 52 * 2, h = 52 * 2; // ★ 2倍
+  const w = 52 * 2, h = 52 * 2; // ★ 2倍
 
   enemies.push({
     x,
--   y: (FLOOR_Y - 1) * TILE - h,
-+   y: (FLOOR_Y - 1) * TILE - h, // 2倍にしてもこの式で地面に揃います
+    y: (FLOOR_Y - 1) * TILE - h, // 2倍にしてもこの式で地面に揃います
     w, h, vx: 1.1, facing: -1, img: enemySprites[key],
     slotIndex: nextEnemyIndex
   });
