@@ -76,8 +76,8 @@
     facing: 1
   };
 
-  // ===== 敵（順番固定） =====
-  const spawnX = [18 * TILE, 45 * TILE, 75 * TILE, 110 * TILE]; // mama,kairi,pocha,papa の出現地点
+  // ===== 敵（順番固定：mama→kairi→pocha→papa） =====
+  const spawnX = [18 * TILE, 45 * TILE, 75 * TILE, 110 * TILE];
   let nextEnemyIdx = 0;
   const enemies = []; // {x,y,w,h,vx,facing,img}
 
