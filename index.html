@@ -4,7 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>ちびジャンプ！(Mario-like)</title>
-  <!-- CSS の読み込み -->
+
+  <!-- 正しいCSSの読み込み -->
   <link rel="stylesheet" href="styles.css" />
 
   <noscript>このゲームを遊ぶには JavaScript を有効にしてください。</noscript>
@@ -32,11 +33,11 @@
       お使いのブラウザは Canvas に対応していないようです。最新の Chrome / Edge / Safari でお試しください。
     </canvas>
 
-    <!-- モバイル向けタッチ操作 -->
-    <div class="touch-controls" aria-hidden="true">
-      <button id="btn-left" class="btn" title="左へ">◀︎</button>
-      <button id="btn-jump" class="btn" title="ジャンプ">⤴︎</button>
-      <button id="btn-right" class="btn" title="右へ">▶︎</button>
+    <!-- タブレット向けバーチャルボタン -->
+    <div class="touch-controls" aria-hidden="false" role="group" aria-label="タブレット操作ボタン">
+      <button id="btn-left"  class="btn touch-btn" title="左へ"   aria-label="左へ移動">◀︎</button>
+      <button id="btn-jump"  class="btn touch-btn jump" title="ジャンプ" aria-label="ジャンプ">⤴︎</button>
+      <button id="btn-right" class="btn touch-btn" title="右へ"   aria-label="右へ移動">▶︎</button>
     </div>
   </main>
 
@@ -44,7 +45,8 @@
     <small>© 2025 Komiya Family</small>
   </footer>
 
-  <!-- JS の読み込み（defer で DOM 構築後に実行） -->
- <script src="app.js" defer></script>
+  <!-- 正しいJSの読み込み（deferでDOM構築後に実行） -->
+  <script src="app.js" defer></script>
 </body>
 </html>
+
