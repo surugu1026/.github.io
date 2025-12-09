@@ -28,19 +28,54 @@ canvas#game {
   max-width: 96vw; height: auto; background: linear-gradient(#87CEEB 60%, #b0e0e6);
 }
 
-.touch-controls { margin-top: .75rem; display: none; gap: .5rem; }
-.touch-controls .btn {
-  font-size: 1.5rem; padding: .6rem 1rem; border-radius: 10px; border: none;
-  background: rgba(255,255,255,.85); box-shadow: 0 4px 12px rgba(0,0,0,.2);
+/* タブレット向けバーチャルボタン */
+.touch-controls {
+  margin-top: .75rem;
+  display: none; /* PCでは非表示、下の@mediaで表示 */
+  justify-content: center;
+  gap: 1rem;
+  user-select: none;
+  -webkit-user-select: none;
 }
-.footer { text-align: center; color: #fff; padding: .5rem; }
+.touch-controls .touch-btn {
+  font-size: 2rem;
+  padding: 1rem 1.2rem;
+  border-radius: 16px;
+  border: none;
+  background: rgba(255,255,255,.92);
+  box-shadow: 0 8px 20px rgba(0,0,0,.25);
+  min-width: 68px;
+  min-height: 68px;
+  touch-action: none; /* スワイプでスクロールせずボタンに集中 */
+  cursor: pointer;
+}
+.touch-controls .touch-btn:active {
+  transform: translateY(2px);
+  box-shadow: 0 4px 14px rgba(0,0,0,.25);
+}
+.touch-controls .touch-btn.jump {
+  background: #fff2e6;
+  border: 2px solid #ffd1a3;
+}
+
+/* スマホ／タブレットで常時表示 */
+@media (max-width: 1024px) {
+  .touch-controls { display: flex; }
+}
+
+/* 縦画面時に下部固定（片手親指操作向け） */
+@media (max-width: 768px) and (orientation: portrait) {
+  .touch-controls {
+    position: fixed;
+    left: 0; right: 0; bottom: 16px;
+    z-index: 10;
+    padding: 0 12px;
+  }
+}
 
 /* スクリーンリーダー専用テキスト */
 .sr-only {
   position: absolute; width: 1px; height: 1px;
   padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0;
 }
-
-@media (max-width: 768px) {
-  .touch-controls { display: flex; justify-content: center; }
-  .topbar h1 { font-size: 1rem; }
+.footer { text-align: center; color: #fff; padding: .5rem; }
