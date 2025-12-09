@@ -164,3 +164,78 @@
     // 遠景の雲
     ctx.fillStyle = 'rgba(255,255,255,0.8)';
     for (let i = 0; i < 8; i++) {
+      const x = (i * 220) - (camera.x * 0.2) % (canvas.width + 300);
+      const y = 60 + (i % 3) * 35;
+      cloud(x, y);
+    }
+
+    // 地面・足場
+    platforms.forEach(p => {
+      if (p.x + p.w < camera.x || p.x > camera.x + camera.w) return;
+      ctx.fillStyle = '#3b2f2f';
+      ctx.fillRect(p.x - camera.x, p.y - camera.y, p.w, p.h);
+      // 芝生
+      ctx.fillStyle = '#2ecc71';
+      ctx.fillRect(p.x - camera.x, p.y - camera.y, p.w, 6);
+    });
+
+    // コイン
+    coins.forEach(c => {
+      if (c.taken) return;
+      if (c.x + 20 < camera.x || c.x - 20 > camera.x + camera.w) return;
+      const t = Date.now() / 200;
+      ctx.save();
+      ctx.translate(c.x - camera.x, c.y - camera.y);
+      ctx.rotate(Math.sin(t) * 0.15);
+      ctx.fillStyle = '#ffcc00';
+      ctx.beginPath();
+      ctx.arc(0, 0, c.r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(-3, -6, 6, 12);
+      ctx.restore();
+    });
+
+    // 敵
+    enemies.forEach(e => {
+      if (e.x + e.w < camera.x || e.x > camera.x + camera.w) return;
+      ctx.fillStyle = '#c0392b';
+      ctx.fillRect(e.x - camera.x, e.y - camera.y, e.w, e.h);
+      // 目
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(e.x - camera.x + 6, e.y - camera.y + 6, 8, 8);
+      ctx.fillRect(e.x - camera.x + e.w - 14, e.y - camera.y + 6, 8, 8);
+    });
+
+    // ゴール旗
+    if (goal.x + goal.w >= camera.x && goal.x <= camera.x + camera.w) {
+      ctx.fillStyle = '#555';
+      ctx.fillRect(goal.x - camera.x, goal.y - camera.y, 6, goal.h);
+      ctx.fillStyle = '#ff0066';
+      ctx.beginPath();
+      ctx.moveTo(goal.x - camera.x + 6, goal.y - camera.y + 10);
+      ctx.lineTo(goal.x - camera.x + 80, goal.y - camera.y + 40);
+      ctx.lineTo(goal.x - camera.x + 6, goal.y - camera.y + 70);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // プレイヤー（丸＋帽子風）
+    ctx.fillStyle = '#2ecc71';
+    ctx.fillRect(player.x - camera.x, player.y - camera.y, player.w, player.h);
+    ctx.fillStyle = '#1e8449';
+    ctx.fillRect((player.x - camera.x) + (player.facing === 1 ? 10 : 0), player.y - camera.y - 8, 24, 8);
+  }
+
+  function cloud(x, y) {
+    ctx.beginPath();
+    ctx.arc(x, y, 28, 0, Math.PI * 2);
+    ctx.arc(x + 26, y + 10, 22, 0, Math.PI * 2);
+    ctx.arc(x - 26, y + 10, 22, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // 開始
+  statusEl.textContent = '左右移動・スペースでジャンプ！';
+  update();
+})();
