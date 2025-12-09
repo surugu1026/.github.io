@@ -320,3 +320,4 @@
   // スタート
   statusEl.textContent = '左右キーで移動、スペースでジャンプ！';
   requestAnimationFrame(update);
+  })();
