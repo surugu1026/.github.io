@@ -6,16 +6,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>ちびジャンプ！(Mario-like)</title>
 
-  <!-- CSS -->
-  styles.css
+  <!-- CSSの読み込み -->
+  <link rel="stylesheet" href="styles.css" />
 
-  <!-- 画像のプリロード（任意。ファイルが存在するものだけ） -->
-  Image.png
-  mama.png
-  <link rel="preload" as="image" href="kairi.png" />
-ad" as="image" href="mio.png" />
-
-い。</noscript>
+ng
+  <link rel="preload" as="image" href="mama.png" />
+oad" as="image" href="papa.png" />
+ptを有効にしてください。</noscript>
 </head>
 <body>
   <header class="topbar">
@@ -35,6 +32,7 @@ ad" as="image" href="mio.png" />
       お使いのブラウザはCanvasに対応していないようです。最新のChrome/Edge/Safariでお試しください。
     </canvas>
 
+    <!-- モバイル向けタッチ操作 -->
     <div class="touch-controls" aria-hidden="true">
       <button id="btn-left" class="btn" title="左へ">◀︎</button>
       <button id="btn-jump" class="btn" title="ジャンプ">⤴︎</button>
@@ -46,7 +44,7 @@ ad" as="image" href="mio.png" />
     <small>© 2025 Komiya Family</small>
   </footer>
 
-  <!-- JS（閉じタグ必須） -->
+  <!-- JSの読み込み（閉じタグ必須） -->
   app.js</script>
 </body>
 </html>
