@@ -9,40 +9,83 @@
   const coinsEl = document.getElementById('coins');
   const statusEl = document.getElementById('status');
 
-  // ===== 定数（ジャンプを高めに） =====
+  // ===== 定数（ジャンプ高め／基礎設定） =====
   const G = 0.6;            // 重力
   const MOVE = 2.2;         // 横移動速度
-  const JUMP = 16;          // ジャンプ初速（高めに調整）
+  const JUMP = 16;          // ジャンプ初速（高め）
   const TILE = 54;          // タイルサイズ
   const WORLD_WIDTH = 200;  // 横タイル数
   const FLOOR_Y = 9;        // 地面タイル行
 
-  // ===== 入力 =====
+  // ===== 入力（キーボード） =====
   const keys = { left: false, right: false, jump: false };
   window.addEventListener('keydown', e => {
     if (e.code === 'ArrowLeft') keys.left = true;
     if (e.code === 'ArrowRight') keys.right = true;
     if (e.code === 'Space') keys.jump = true;
+    tryStartBGMOnce(); // 最初の打鍵でBGM開始
   });
   window.addEventListener('keyup', e => {
     if (e.code === 'ArrowLeft') keys.left = false;
     if (e.code === 'ArrowRight') keys.right = false;
     if (e.code === 'Space') keys.jump = false;
   });
-  // タッチ操作（モバイル）
-  const bindTouch = (id, key) => {
-    const el = document.getElementById(id);
+
+  // ===== タブレット操作（長押し対応・誤スクロール防止） =====
+  function bindTouchHold(btnId, keyName) {
+    const el = document.getElementById(btnId);
     if (!el) return;
-    el.addEventListener('pointerdown', () => keys[key] = true);
-    el.addEventListener('pointerup',   () => keys[key] = false);
-    el.addEventListener('pointerleave',() => keys[key] = false);
-  };
-  bindTouch('btn-left', 'left');
-  bindTouch('btn-right','right');
-  bindTouch('btn-jump', 'jump');
+
+    const down = (ev) => {
+      ev.preventDefault();
+      tryStartBGMOnce();
+      keys[keyName] = true;
+      el.classList.add('active');
+    };
+    const up = (ev) => {
+      ev.preventDefault();
+      keys[keyName] = false;
+      el.classList.remove('active');
+    };
+
+    el.addEventListener('pointerdown', down,  { passive: false });
+    el.addEventListener('pointerup',   up,    { passive: false });
+    el.addEventListener('pointerleave',up,    { passive: false });
+    el.addEventListener('pointercancel',up,   { passive: false });
+
+    el.addEventListener('touchstart',  down,  { passive: false });
+    el.addEventListener('touchend',    up,    { passive: false });
+    el.addEventListener('touchcancel', up,    { passive: false });
+  }
+  bindTouchHold('btn-left', 'left');
+  bindTouchHold('btn-right','right');
+  bindTouchHold('btn-jump', 'jump');
+
+  // キャンバス上のタッチはスクロールさせない
+  canvas.addEventListener('touchstart', (ev) => ev.preventDefault(), { passive: false });
+  canvas.addEventListener('touchmove',  (ev) => ev.preventDefault(), { passive: false });
+  canvas.addEventListener('touchend',   (ev) => ev.preventDefault(), { passive: false });
+
+  // ===== BGM 制御（autoplay対策：ユーザー操作で開始） =====
+  let bgm, bgmReady = false, bgmStarted = false;
+  function initBGM() {
+    bgm = new Audio('./bgm.mp3'); // 同じフォルダに置く
+    bgm.loop = true;
+    bgm.volume = 0.35;
+    bgm.addEventListener('canplaythrough', () => { bgmReady = true; });
+  }
+  function tryStartBGMOnce() {
+    if (bgmReady && !bgmStarted) {
+      bgm.play().then(() => { bgmStarted = true; })
+                .catch(err => console.warn('BGM再生に失敗:', err));
+    }
+  }
+  // 画面タップでも1度だけ開始
+  document.addEventListener('pointerdown', tryStartBGMOnce, { once: true });
+  document.addEventListener('touchstart',  tryStartBGMOnce, { once: true });
 
   // ===== 画像ロード（404でも落ちない安全ローダ） =====
-  const ASSET_BASE = './'; // index.html と同じフォルダに置いた場合
+  const ASSET_BASE = './'; // index.html と同階層
 
   function loadImageSafe(file) {
     return new Promise((resolve) => {
@@ -88,26 +131,30 @@
     facing: 1
   };
 
-  // ===== 敵（順番：mama → kairi → pocha → papa、サイズ2倍） =====
+  // ===== 敵（順番：mama → kairi → pocha → papa、サイズ2倍、後半ほど速く） =====
   const enemyOrderFiles = ['mama.png', 'kairi.png', 'pocha.png', 'papa.png'];
   const spawnX = [18 * TILE, 45 * TILE, 75 * TILE, 110 * TILE];
-  let nextEnemyIndex = 0;          // ★ 必ず宣言を関数より前に
-  const enemies = [];              // アクティブな敵
+  let nextEnemyIndex = 0;
+  const enemies = [];
 
   function spawnNextEnemy() {
     if (nextEnemyIndex >= enemyOrderFiles.length) return;
 
     const x = spawnX[nextEnemyIndex];
-    const w = 52 * 2;             // ★ 2倍
-    const h = 52 * 2;             // ★ 2倍
+    const w = 52 * 2; // 2倍
+    const h = 52 * 2; // 2倍
+
+    const baseSpeed = 1.8;               // ベース速度（速め）
+    const accel     = 0.2 * nextEnemyIndex; // 後半ほど速い
+    const vx        = baseSpeed + accel;
 
     enemies.push({
       x,
       y: (FLOOR_Y - 1) * TILE - h, // 地面接地
       w, h,
-      vx: 2,
+      vx,
       facing: -1,
-      slotIndex: nextEnemyIndex    // スプライト選択用インデックス
+      slotIndex: nextEnemyIndex
     });
 
     nextEnemyIndex++;
@@ -128,7 +175,7 @@
   // ===== 状態 =====
   let coinCount = 0;
   let finished = false;
-  const victory = { active: false, t: 0 }; // 勝利演出フレーム
+  const victory = { active: false, t: 0 };
 
   // ===== ユーティリティ =====
   const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
@@ -149,7 +196,6 @@
       }
       ctx.restore();
     } else {
-      // 画像が無い／読み込み失敗時の代替
       ctx.fillStyle = '#2ecc71';
       ctx.fillRect(x, y, w, h);
     }
@@ -191,7 +237,6 @@
       const w = res.img.naturalWidth, h = res.img.naturalHeight;
       ctx.drawImage(res.img, -w / 2, -h / 2, w, h);
     } else {
-      // 画像無しでも演出だけ成立させる（丸で代用）
       const r = 160;
       ctx.fillStyle = '#ff66aa';
       ctx.beginPath();
@@ -217,7 +262,9 @@
     if (keys.jump && player.onGround) {
       player.vy = -JUMP;
       player.onGround = false;
-      statusEl && (statusEl.textContent = 'ジャンプ！');
+      if (statusEl) statusEl.textContent = 'ジャンプ！';
+      // 長押し連続ジャンプ防止（任意）
+      keys.jump = false;
     }
 
     // 物理
@@ -247,7 +294,7 @@
       const dx = (player.x + player.w / 2) - c.x;
       const dy = (player.y + player.h / 2) - c.y;
       if (Math.hypot(dx, dy) < c.r + Math.min(player.w, player.h) / 2) {
-        c.taken = true; coinCount++; coinsEl && (coinsEl.textContent = `🪙 ${coinCount}`);
+        c.taken = true; coinCount++; if (coinsEl) coinsEl.textContent = `🪙 ${coinCount}`;
       }
     });
 
@@ -257,8 +304,8 @@
     // 敵更新・当たり
     enemies.forEach(e => {
       e.x += e.vx;
-      // 簡易往復（一定距離で反転）
-      const cycle = TILE * 8;
+      // 簡易往復（一定距離で反転：少し長め）
+      const cycle = TILE * 10;
       const mod = (e.x + 100000) % cycle;
       if (mod < 2 || mod > cycle - 2) { e.vx *= -1; e.facing = e.vx < 0 ? -1 : 1; }
 
@@ -269,13 +316,13 @@
         if (stomp) {
           player.vy = -JUMP * 0.6;
           e.x = -99999; e.vx = 0; // 退場
-          statusEl && (statusEl.textContent = 'やっつけた！');
+          if (statusEl) statusEl.textContent = 'やっつけた！';
         } else {
           // 優しめ：スタート付近へ戻す
           player.x = 2 * TILE;
           player.y = (FLOOR_Y - 1) * TILE - player.h;
           player.vx = 0; player.vy = 0;
-          statusEl && (statusEl.textContent = 'いたっ！もう一度');
+          if (statusEl) statusEl.textContent = 'いたっ！もう一度';
         }
       }
     });
@@ -287,8 +334,16 @@
       finished = true;
       victory.active = true;
       victory.t = 0;
-      statusEl && (statusEl.textContent = `ゴール！コイン ${coinCount} 枚`);
+      if (statusEl) statusEl.textContent = `ゴール！コイン ${coinCount} 枚`;
       setTimeout(() => alert(`ゴール！がんばったね！\nコイン ${coinCount} 枚`), 100);
+
+      // BGMフェードアウト（任意）
+      if (bgmStarted) {
+        const fade = setInterval(() => {
+          bgm.volume = Math.max(0, bgm.volume - 0.05);
+          if (bgm.volume <= 0) { clearInterval(fade); bgm.pause(); }
+        }, 100);
+      }
     }
 
     // カメラ
@@ -379,8 +434,10 @@
     ctx.fill();
   }
 
-  // ===== 画像ロード完了後に開始 =====
+  // ===== スタート（画像ロード→BGM初期化→ゲーム開始） =====
   (async () => {
+    initBGM();
+
     const playerRes  = await loadImageSafe('Image.png');
     const enemiesRes = await Promise.all(enemyOrderFiles.map(f => loadImageSafe(f)));
     const mioRes     = await loadImageSafe('mio.png');
@@ -391,7 +448,7 @@
       mio:     mioRes
     };
 
-    statusEl && (statusEl.textContent = '左右キーで移動、スペースでジャンプ！');
+    if (statusEl) statusEl.textContent = '左右キーで移動、スペースでジャンプ！';
     requestAnimationFrame(update);
   })();
 
