@@ -1,35 +1,35 @@
-
 <!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>ちびジャンプ！(Mario-like)</title>
-
-  <!-- CSSの読み込み -->
+  <!-- CSS の読み込み -->
   <link rel="stylesheet" href="styles.css" />
 
-ng
-  <link rel="preload" as="image" href="mama.png" />
-oad" as="image" href="papa.png" />
-ptを有効にしてください。</noscript>
+  <noscript>このゲームを遊ぶには JavaScript を有効にしてください。</noscript>
 </head>
 <body>
   <header class="topbar">
     <h1>ちびジャンプ！</h1>
-    <div class="hud">
-      <span id="coins">🪙 0</span>
+    <div class="hud" aria-live="polite">
+      <span id="coins" aria-label="コイン枚数">🪙 0</span>
       <span id="status">準備OK</span>
     </div>
   </header>
 
   <main class="game-wrap">
-    <p class="sr-only" aria-live="polite">
+    <p class="sr-only">
       左右キーで移動、スペースキーでジャンプ。コインを集めてゴール旗へ！
     </p>
 
-    <canvas id="game" width="960" height="540" role="img" aria-label="横スクロールゲームのプレイ画面">
-      お使いのブラウザはCanvasに対応していないようです。最新のChrome/Edge/Safariでお試しください。
+    <canvas
+      id="game"
+      width="960"
+      height="540"
+      role="img"
+      aria-label="横スクロールゲームのプレイ画面">
+      お使いのブラウザは Canvas に対応していないようです。最新の Chrome / Edge / Safari でお試しください。
     </canvas>
 
     <!-- モバイル向けタッチ操作 -->
@@ -44,7 +44,7 @@ ptを有効にしてください。</noscript>
     <small>© 2025 Komiya Family</small>
   </footer>
 
-  <!-- JSの読み込み（閉じタグ必須） -->
+  <!-- JS の読み込み（defer で DOM 構築後に実行） -->
   app.js</script>
 </body>
 </html>
