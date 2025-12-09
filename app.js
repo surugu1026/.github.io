@@ -1,15 +1,21 @@
 
 (() => {
-  const canvas = document.getElementById('game');
-  const ctx = canvas.getContext('2d');
+  'use strict';
 
-  // ===== 物理・共通設定 =====
-  const G = 0.6;
-  const MOVE = 2.2;
-  const JUMP = 10.5;
-  const TILE = 54;
-  const WORLD_WIDTH = 200;         // 横タイル数
-  const FLOOR_Y = 9;               // 地面タイル行
+  // ===== DOM 取得 =====
+  const canvas = document.getElementById('game');
+  if (!canvas) { console.error('canvas #game が見つかりません'); return; }
+  const ctx = canvas.getContext('2d');
+  const coinsEl = document.getElementById('coins');
+  const statusEl = document.getElementById('status');
+
+  // ===== 定数 =====
+  const G = 0.6;            // 重力
+  const MOVE = 2.2;         // 横移動速度
+  const JUMP = 10.5;        // ジャンプ初速
+  const TILE = 54;          // タイルサイズ
+  const WORLD_WIDTH = 200;  // 横タイル数
+  const FLOOR_Y = 9;        // 地面タイル行
 
   // ===== 入力 =====
   const keys = { left: false, right: false, jump: false };
@@ -24,41 +30,34 @@
     if (e.code === 'Space') keys.jump = false;
   });
 
-  document.getElementById('btn-left').addEventListener('pointerdown', () => keys.left = true);
-  document.getElementById('btn-left').addEventListener('pointerup',   () => keys.left = false);
-  document.getElementById('btn-right').addEventListener('pointerdown', () => keys.right = true);
-  document.getElementById('btn-right').addEventListener('pointerup',   () => keys.right = false);
-  document.getElementById('btn-jump').addEventListener('pointerdown',  () => keys.jump = true);
-  document.getElementById('btn-jump').addEventListener('pointerup',    () => keys.jump = false);
-
-  // ===== 画像ローダ（プレイヤー・敵・勝利演出） =====
-  function loadImage(src) {
-    const img = new Image();
-    img.src = src;
-    img.decode?.().catch(()=>{}); // デコード待ち（対応ブラウザのみ）
-    return img;
-  }
-
-  // プレイヤー画像（以前のご指定：Image.png）
-  const playerImg = loadImage('Image.png');
-
-  // 敵画像：順番をこの配列の通りに出す
-  const enemyKeys = ['mama', 'kairi', 'pocha', 'papa'];
-  const enemySprites = {
-    mama: loadImage('mama.png'),
-    kairi: loadImage('kairi.png'),
-    pocha: loadImage('pocha.png'),
-    papa: loadImage('papa.png'),
+  // タッチ操作
+  const bindTouch = (id, key) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('pointerdown', () => keys[key] = true);
+    el.addEventListener('pointerup',   () => keys[key] = false);
+    el.addEventListener('pointerleave',() => keys[key] = false);
   };
+  bindTouch('btn-left', 'left');
+  bindTouch('btn-right','right');
+  bindTouch('btn-jump', 'jump');
 
-  // 勝利演出画像（奥→手前へ）
-  const mioImg = loadImage('mio.png');
+  // ===== 画像読み込み =====
+  const playerImg = new Image(); playerImg.src = 'Image.png';
+  const enemyOrder = ['mama', 'kairi', 'pocha', 'papa'];
+  const enemySprites = {
+    mama:  (() => { const i = new Image(); i.src = 'mama.png';  return i; })(),
+    kairi: (() => { const i = new Image(); i.src = 'kairi.png'; return i; })(),
+    pocha: (() => { const i = new Image(); i.src = 'pocha.png'; return i; })(),
+    papa:  (() => { const i = new Image(); i.src = 'papa.png';  return i; })()
+  };
+  const mioImg = new Image(); mioImg.src = 'mio.png';
 
-  // ===== ステージ生成 =====
-  const platforms = []; // 地面や足場
+  // ===== ステージ =====
+  const platforms = [];
   for (let i = 0; i < WORLD_WIDTH; i++) {
     platforms.push({ x: i * TILE, y: FLOOR_Y * TILE, w: TILE, h: TILE });
-    if (i % 15 === 5) platforms.push({ x: i * TILE, y: (FLOOR_Y - 2) * TILE, w: TILE, h: TILE });
+    if (i % 15 === 5)  platforms.push({ x: i * TILE, y: (FLOOR_Y - 2) * TILE, w: TILE, h: TILE });
     if (i % 23 === 10) platforms.push({ x: i * TILE, y: (FLOOR_Y - 4) * TILE, w: TILE, h: TILE });
   }
 
@@ -70,32 +69,28 @@
   // ===== プレイヤー =====
   const player = {
     x: 2 * TILE,
-    y: (FLOOR_Y - 1) * TILE - 40,
+    y: (FLOOR_Y - 1) * TILE - 64,
     w: 48, h: 64,
     vx: 0, vy: 0,
     onGround: false,
     facing: 1
   };
 
-  // ===== 敵のスポーン管理（順番：mama → kairi → pocha → papa） =====
-  // プレイヤーの進行に合わせて順番に出現させます
-  const spawnPoints = [18 * TILE, 45 * TILE, 75 * TILE, 110 * TILE]; // 出現地点（順番対応）
-  let nextEnemyIndex = 0;
-  const enemies = []; // アクティブ敵
+  // ===== 敵（順番：mama → kairi → pocha → papa） =====
+  const spawnX = [18 * TILE, 45 * TILE, 75 * TILE, 110 * TILE];
+  let nextEnemyIdx = 0;
+  const enemies = []; // {x,y,w,h,vx,facing,img}
 
   function spawnNextEnemy() {
-    if (nextEnemyIndex >= enemyKeys.length) return;
-    const key = enemyKeys[nextEnemyIndex];
-    const x = spawnPoints[nextEnemyIndex];
-    // 画像サイズ基準に当たり判定を取りやすい値
+    if (nextEnemyIdx >= enemyOrder.length) return;
+    const key = enemyOrder[nextEnemyIdx];
+    const x = spawnX[nextEnemyIdx];
     const w = 52, h = 52;
     enemies.push({ x, y: (FLOOR_Y - 1) * TILE - h, w, h, vx: 1.1, facing: -1, img: enemySprites[key] });
-    nextEnemyIndex++;
+    nextEnemyIdx++;
   }
-
   function maybeSpawnByProgress() {
-    // プレイヤーがスポーン地点付近まで来たら順番に出す
-    if (nextEnemyIndex < spawnPoints.length && player.x > spawnPoints[nextEnemyIndex] - TILE * 2) {
+    if (nextEnemyIdx < spawnX.length && player.x > spawnX[nextEnemyIdx] - TILE * 2) {
       spawnNextEnemy();
     }
   }
@@ -106,35 +101,33 @@
   // ===== カメラ =====
   const camera = { x: 0, y: 0, w: canvas.width, h: canvas.height };
 
-  // ===== HUD =====
-  const coinsEl = document.getElementById('coins');
-  const statusEl = document.getElementById('status');
+  // ===== 状態 =====
   let coinCount = 0;
-
-  // ===== 勝利演出 =====
   let finished = false;
-  const victory = { active: false, t: 0 }; // t はフレームカウンタ
+  const victory = { active: false, t: 0 }; // 演出カウンタ
 
   // ===== ユーティリティ =====
-  const rectIntersect = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
   const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+  const rectIntersect = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
   const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
 
   // ===== メインループ =====
   function update() {
-    // ゴール後はゲーム進行を止めて演出のみ
     if (finished) {
-      victory.t += 1;
-      draw(); // 演出も draw 内で描画
+      victory.t += 1;       // 演出のみ進める
+      draw();
       requestAnimationFrame(update);
       return;
     }
 
-    // 入力
+    // 入力 → 速度
     player.vx = 0;
-    if (keys.left) { player.vx = -MOVE; player.facing = -1; }
-    if (keys.right) { player.vx = MOVE; player.facing = 1; }
-    if (keys.jump && player.onGround) { player.vy = -JUMP; player.onGround = false; statusEl.textContent = 'ジャンプ！'; }
+    if (keys.left)  { player.vx = -MOVE; player.facing = -1; }
+    if (keys.right) { player.vx =  MOVE; player.facing =  1; }
+    if (keys.jump && player.onGround) {
+      player.vy = -JUMP; player.onGround = false;
+      statusEl.textContent = 'ジャンプ！';
+    }
 
     // 物理
     player.vy += G;
@@ -146,35 +139,34 @@
     platforms.forEach(p => {
       const a = { x: player.x, y: player.y, w: player.w, h: player.h };
       if (rectIntersect(a, p)) {
-        const fromTop = (a.y + a.h) - p.y < 20 && player.vy > 0;
-        const fromLeft = (a.x + a.w) - p.x < 20 && player.vx > 0;
+        const fromTop   = (a.y + a.h) - p.y < 20 && player.vy > 0;
+        const fromLeft  = (a.x + a.w) - p.x < 20 && player.vx > 0;
         const fromRight = (p.x + p.w) - a.x < 20 && player.vx < 0;
 
-        if (fromTop) { player.y = p.y - player.h; player.vy = 0; player.onGround = true; }
+        if (fromTop)       { player.y = p.y - player.h; player.vy = 0; player.onGround = true; }
         else if (fromLeft) { player.x = p.x - player.w; }
-        else if (fromRight) { player.x = p.x + p.w; }
-        else { player.y = p.y + p.h; player.vy = 0; }
+        else if (fromRight){ player.x = p.x + p.w; }
+        else               { player.y = p.y + p.h; player.vy = 0; }
       }
     });
 
     // コイン
     coins.forEach(c => {
-      if (!c.taken) {
-        const dx = (player.x + player.w / 2) - c.x;
-        const dy = (player.y + player.h / 2) - c.y;
-        if (Math.hypot(dx, dy) < c.r + Math.min(player.w, player.h) / 2) {
-          c.taken = true; coinCount++; coinsEl.textContent = `🪙 ${coinCount}`;
-        }
+      if (c.taken) return;
+      const dx = (player.x + player.w / 2) - c.x;
+      const dy = (player.y + player.h / 2) - c.y;
+      if (Math.hypot(dx, dy) < c.r + Math.min(player.w, player.h) / 2) {
+        c.taken = true; coinCount++; coinsEl.textContent = `🪙 ${coinCount}`;
       }
     });
 
-    // 敵のスポーン判定（順番通り）
+    // 敵スポーン（順番に）
     maybeSpawnByProgress();
 
-    // 敵の更新＆当たり
+    // 敵更新・当たり
     enemies.forEach(e => {
       e.x += e.vx;
-      // 簡易な往復移動（一定距離で反転）
+      // 簡易往復（一定距離で反転）
       const cycle = TILE * 8;
       const mod = (e.x + 100000) % cycle;
       if (mod < 2 || mod > cycle - 2) { e.vx *= -1; e.facing = e.vx < 0 ? -1 : 1; }
@@ -185,12 +177,13 @@
         const stomp = player.vy > 0 && (player.y + player.h) - e.y < 18;
         if (stomp) {
           player.vy = -JUMP * 0.6;
-          // 退場（画面外へ飛ばす）
-          e.x = -9999; e.vx = 0;
+          e.x = -99999; e.vx = 0;           // 退場
           statusEl.textContent = 'やっつけた！';
         } else {
-          // ダメージ → スタート付近へ戻す（優しめ）
-          player.x = 2 * TILE; player.y = (FLOOR_Y - 1) * TILE - player.h; player.vx = 0; player.vy = 0;
+          // 優しめ：スタート付近へ戻す
+          player.x = 2 * TILE;
+          player.y = (FLOOR_Y - 1) * TILE - player.h;
+          player.vx = 0; player.vy = 0;
           statusEl.textContent = 'いたっ！もう一度';
         }
       }
@@ -204,9 +197,10 @@
       victory.active = true;
       victory.t = 0;
       statusEl.textContent = `ゴール！コイン ${coinCount} 枚`;
+      setTimeout(() => alert(`ゴール！がんばったね！\nコイン ${coinCount} 枚`), 100);
     }
 
-    // カメラ追従
+    // カメラ
     camera.x = clamp(player.x - camera.w / 2, 0, (WORLD_WIDTH * TILE) - camera.w);
 
     draw();
@@ -215,13 +209,12 @@
 
   // ===== 描画 =====
   function draw() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
     // 背景
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = '#87CEEB';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // 雲（遠景）
+    // 雲
     ctx.fillStyle = 'rgba(255,255,255,0.85)';
     for (let i = 0; i < 8; i++) {
       const x = (i * 220) - (camera.x * 0.2) % (canvas.width + 300);
@@ -283,28 +276,26 @@
     }
 
     // プレイヤー（画像）
-    {
-      ctx.save();
-      if (player.facing === -1) {
-        ctx.translate((player.x - camera.x) + player.w, player.y - camera.y);
-        ctx.scale(-1, 1);
-        ctx.drawImage(playerImg, 0, 0, player.w, player.h);
-      } else {
-        ctx.drawImage(playerImg, player.x - camera.x, player.y - camera.y, player.w, player.h);
-      }
-      ctx.restore();
+    ctx.save();
+    if (player.facing === -1) {
+      ctx.translate((player.x - camera.x) + player.w, player.y - camera.y);
+      ctx.scale(-1, 1);
+      ctx.drawImage(playerImg, 0, 0, player.w, player.h);
+    } else {
+      ctx.drawImage(playerImg, player.x - camera.x, player.y - camera.y, player.w, player.h);
     }
+    ctx.restore();
 
-    // 勝利演出：mio.png を奥（小さく・薄く）から前（大きく・濃く）へ
+    // 勝利演出：mio.png を奥（小・薄）→手前（大・濃）へ
     if (victory.active) {
-      const duration = 180; // 約3秒（60fps想定）
+      const duration = 180; // 約3秒
       const t = clamp(victory.t / duration, 0, 1);
       const k = easeOutCubic(t);
-      const baseScale = 0.25;      // 奥：25%
-      const endScale  = 1.4;       // 手前：140%
+      const baseScale = 0.25;   // 奥
+      const endScale  = 1.4;    // 手前
       const scale = baseScale + (endScale - baseScale) * k;
-      const alpha = 0.2 + 0.8 * k; // 透明→不透明へ
-      const yLift = (1 - k) * 60;  // 少し上からスッと降りてくる感じ
+      const alpha = 0.2 + 0.8 * k;
+      const yLift = (1 - k) * 60;
 
       ctx.save();
       ctx.globalAlpha = alpha;
@@ -317,6 +308,7 @@
     }
   }
 
+  // 雲
   function cloud(x, y) {
     ctx.beginPath();
     ctx.arc(x, y, 28, 0, Math.PI * 2);
@@ -325,7 +317,6 @@
     ctx.fill();
   }
 
-  // ===== スタート =====
-  const statusEl = document.getElementById('status');
+  // スタート
   statusEl.textContent = '左右キーで移動、スペースでジャンプ！';
   requestAnimationFrame(update);
