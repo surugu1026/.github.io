@@ -1,0 +1,79 @@
+:root {
+  --bg: #0f1226;
+  --panel: #171a34;
+  --text: #e7ebff;
+  --accent: #6bd1ff;     /* ゴール */
+  --player: #ff7b7b;     /* プレイヤー */
+  --wall: #36416b;       /* 壁 */
+  --path: #232746;       /* 通路 */
+  --btn-primary: #37c879;
+  --btn-secondary: #5b7cff;
+}
+* { box-sizing: border-box; }
+html, body {
+  height: 100%;
+  margin: 0;
+  background: radial-gradient(1200px circle at 10% 10%, #121538 0%, var(--bg) 60%);
+  color: var(--text);
+  font-family: "Segoe UI", "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
+}
+
+.hud {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 1rem;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  background: linear-gradient(180deg, #1b1e3b 0%, var(--panel) 100%);
+  border-bottom: 1px solid #232746;
+}
+.brand { font-weight: 700; letter-spacing: 0.4px; }
+.stats span { margin-right: 1rem; }
+
+.actions button {
+  margin-left: 0.4rem;
+  padding: 0.5rem 0.8rem;
+  border-radius: 8px; border: none; cursor: pointer;
+  color: #fff; font-weight: 600;
+}
+.primary { background: var(--btn-primary); }
+.secondary { background: var(--btn-secondary); }
+.ghost { background: transparent; border: 1px solid #495081; color:#cfd7ff; }
+
+main {
+  display: grid; place-items: center;
+  padding: 1rem;
+}
+#maze {
+  max-width: 92vw;
+  max-height: 62vh;
+  background: var(--panel);
+  border: 2px solid #2a2f55;
+  border-radius: 12px;
+  box-shadow: 0 10px 24px rgba(0,0,0,0.35);
+}
+
+/* 仮想スティック */
+.joystick {
+  margin-top: 1rem;
+  display: grid;
+  grid-template-rows: auto auto auto;
+  gap: 0.5rem;
+  user-select: none;
+}
+.joy-middle { display: grid; grid-template-columns: auto auto; gap: 0.5rem; }
+.joy {
+  width: 64px; height: 64px;
+  border-radius: 12px; border: 1px solid #4a507a;
+  background: #1f2448; color: #e7ebff; font-size: 1.25rem;
+  box-shadow: 0 6px 16px rgba(0,0,0,0.3);
+}
+.joy:active { background: #2a3060; }
+
+/* スマホでのみ表示 */
+@media (min-width: 768px) {
+  .joystick { display: none; }
+}
+
+/* アクセシビリティ */
+button:focus { outline: 2px solid #a5c7ff; }
