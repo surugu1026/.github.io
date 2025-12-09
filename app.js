@@ -9,10 +9,10 @@
   const coinsEl = document.getElementById('coins');
   const statusEl = document.getElementById('status');
 
-  // ===== 定数 =====
+  // ===== 定数（ジャンプを高めに） =====
   const G = 0.6;            // 重力
   const MOVE = 2.2;         // 横移動速度
-  const JUMP = 16;        // ジャンプ初速
+  const JUMP = 16;          // ジャンプ初速（高めに調整）
   const TILE = 54;          // タイルサイズ
   const WORLD_WIDTH = 200;  // 横タイル数
   const FLOOR_Y = 9;        // 地面タイル行
@@ -29,8 +29,7 @@
     if (e.code === 'ArrowRight') keys.right = false;
     if (e.code === 'Space') keys.jump = false;
   });
-
-  // タッチ操作
+  // タッチ操作（モバイル）
   const bindTouch = (id, key) => {
     const el = document.getElementById(id);
     if (!el) return;
@@ -42,21 +41,32 @@
   bindTouch('btn-right','right');
   bindTouch('btn-jump', 'jump');
 
-  // ===== 画像読み込み =====
-  const playerImg = new Image(); playerImg.src = 'Image.png';
-  const enemyOrder = ['mama', 'kairi', 'pocha', 'papa']; // 出現順
-  const enemySprites = {
-    mama:  (() => { const i = new Image(); i.src = 'mama.png';  return i; })(),
-    kairi: (() => { const i = new Image(); i.src = 'kairi.png'; return i; })(),
-    pocha: (() => { const i = new Image(); i.src = 'pocha.png'; return i; })(),
-    papa:  (() => { const i = new Image(); i.src = 'papa.png';  return i; })()
-  };
-  const mioImg = new Image(); mioImg.src = 'mio.png';
+  // ===== 画像ロード（404でも落ちない安全ローダ） =====
+  const ASSET_BASE = './'; // index.html と同じフォルダに置いた場合
 
-  // ===== ステージ =====
+  function loadImageSafe(file) {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload  = () => resolve({ img, ok: true, file });
+      img.onerror = () => {
+        console.warn(`画像の読み込みに失敗: ${ASSET_BASE + file}`);
+        resolve({ img, ok: false, file });
+      };
+      img.src = ASSET_BASE + file;
+    });
+  }
+
+  // スプライト格納
+  let sprites = {
+    player: { img: null, ok: false },
+    enemies: [],   // [{img, ok, file}, ...]
+    mio:    { img: null, ok: false }
+  };
+
+  // ===== ステージ生成 =====
   const platforms = [];
   for (let i = 0; i < WORLD_WIDTH; i++) {
-    platforms.push({ x: i * TILE, y: FLOOR_Y * TILE, w: TILE, h: TILE });
+    platforms.push({ x: i * TILE, y: FLOOR_Y * TILE, w: TILE, h: TILE });                // 地面
     if (i % 15 === 5)  platforms.push({ x: i * TILE, y: (FLOOR_Y - 2) * TILE, w: TILE, h: TILE });
     if (i % 23 === 10) platforms.push({ x: i * TILE, y: (FLOOR_Y - 4) * TILE, w: TILE, h: TILE });
   }
@@ -70,36 +80,41 @@
   const player = {
     x: 2 * TILE,
     y: (FLOOR_Y - 1) * TILE - 64,
-    w: 48, h: 64,
-    vx: 0, vy: 0,
+    w: 48,
+    h: 64,
+    vx: 0,
+    vy: 0,
     onGround: false,
     facing: 1
   };
 
-  // ===== 敵（順番固定：mama→kairi→pocha→papa） =====
+  // ===== 敵（順番：mama → kairi → pocha → papa、サイズ2倍） =====
+  const enemyOrderFiles = ['mama.png', 'kairi.png', 'pocha.png', 'papa.png'];
   const spawnX = [18 * TILE, 45 * TILE, 75 * TILE, 110 * TILE];
-  let nextEnemyIdx = 0;
-  const enemies = []; // {x,y,w,h,vx,facing,img}
+  let nextEnemyIndex = 0;          // ★ 必ず宣言を関数より前に
+  const enemies = [];              // アクティブな敵
 
+  function spawnNextEnemy() {
+    if (nextEnemyIndex >= enemyOrderFiles.length) return;
 
-function spawnNextEnemy() {
-  if (nextEnemyIndex >= enemyOrder.length) return;
-  const key = enemyOrder[nextEnemyIndex];
-  const x = spawnX[nextEnemyIndex];
-  const w = 52 * 2, h = 52 * 2; // ★ 2倍
+    const x = spawnX[nextEnemyIndex];
+    const w = 52 * 2;             // ★ 2倍
+    const h = 52 * 2;             // ★ 2倍
 
-  enemies.push({
-    x,
-    y: (FLOOR_Y - 1) * TILE - h, // 2倍にしてもこの式で地面に揃います
-    w, h, vx: 1.1, facing: -1, img: enemySprites[key],
-    slotIndex: nextEnemyIndex
-  });
-  nextEnemyIndex++;
-}
+    enemies.push({
+      x,
+      y: (FLOOR_Y - 1) * TILE - h, // 地面接地
+      w, h,
+      vx: 1.1,
+      facing: -1,
+      slotIndex: nextEnemyIndex    // スプライト選択用インデックス
+    });
 
-  
+    nextEnemyIndex++;
+  }
+
   function maybeSpawnByProgress() {
-    if (nextEnemyIdx < spawnX.length && player.x > spawnX[nextEnemyIdx] - TILE * 2) {
+    if (nextEnemyIndex < spawnX.length && player.x > spawnX[nextEnemyIndex] - TILE * 2) {
       spawnNextEnemy();
     }
   }
@@ -113,17 +128,83 @@ function spawnNextEnemy() {
   // ===== 状態 =====
   let coinCount = 0;
   let finished = false;
-  const victory = { active: false, t: 0 }; // 演出カウンタ
+  const victory = { active: false, t: 0 }; // 勝利演出フレーム
 
   // ===== ユーティリティ =====
   const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
   const rectIntersect = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
   const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
 
+  // ===== 安全描画ユーティリティ =====
+  function drawPlayerSafe(x, y, w, h, facing) {
+    const res = sprites.player;
+    if (res.ok && res.img.complete && res.img.naturalWidth > 0) {
+      ctx.save();
+      if (facing === -1) {
+        ctx.translate(x + w, y);
+        ctx.scale(-1, 1);
+        ctx.drawImage(res.img, 0, 0, w, h);
+      } else {
+        ctx.drawImage(res.img, x, y, w, h);
+      }
+      ctx.restore();
+    } else {
+      // 画像が無い／読み込み失敗時の代替
+      ctx.fillStyle = '#2ecc71';
+      ctx.fillRect(x, y, w, h);
+    }
+  }
+
+  function drawEnemySafe(e) {
+    const res = sprites.enemies[e.slotIndex];
+    const screenX = e.x - camera.x;
+    const screenY = e.y - camera.y;
+
+    if (res && res.ok && res.img.complete && res.img.naturalWidth > 0) {
+      ctx.save();
+      if (e.facing === -1) {
+        ctx.translate(screenX + e.w, screenY);
+        ctx.scale(-1, 1);
+        ctx.drawImage(res.img, 0, 0, e.w, e.h);
+      } else {
+        ctx.drawImage(res.img, screenX, screenY, e.w, e.h);
+      }
+      ctx.restore();
+    } else {
+      ctx.fillStyle = '#c0392b';
+      ctx.fillRect(screenX, screenY, e.w, e.h);
+    }
+  }
+
+  function drawMioVictorySafe(k) {
+    const res = sprites.mio;
+    const baseScale = 0.25, endScale = 1.4;
+    const scale = baseScale + (endScale - baseScale) * k;
+    const alpha = 0.2 + 0.8 * k;
+    const yLift = (1 - k) * 60;
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.translate(canvas.width / 2, canvas.height / 2 - yLift);
+    ctx.scale(scale, scale);
+    if (res.ok && res.img.complete && res.img.naturalWidth > 0) {
+      const w = res.img.naturalWidth, h = res.img.naturalHeight;
+      ctx.drawImage(res.img, -w / 2, -h / 2, w, h);
+    } else {
+      // 画像無しでも演出だけ成立させる（丸で代用）
+      const r = 160;
+      ctx.fillStyle = '#ff66aa';
+      ctx.beginPath();
+      ctx.arc(0, 0, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
   // ===== メインループ =====
   function update() {
     if (finished) {
-      victory.t += 1;       // 演出のみ進める
+      victory.t += 1; // 演出のみ進める
       draw();
       requestAnimationFrame(update);
       return;
@@ -134,14 +215,15 @@ function spawnNextEnemy() {
     if (keys.left)  { player.vx = -MOVE; player.facing = -1; }
     if (keys.right) { player.vx =  MOVE; player.facing =  1; }
     if (keys.jump && player.onGround) {
-      player.vy = -JUMP; player.onGround = false;
-      statusEl.textContent = 'ジャンプ！';
+      player.vy = -JUMP;
+      player.onGround = false;
+      statusEl && (statusEl.textContent = 'ジャンプ！');
     }
 
     // 物理
     player.vy += G;
-    player.x += player.vx;
-    player.y += player.vy;
+    player.x  += player.vx;
+    player.y  += player.vy;
 
     // 当たり（地面・足場）
     player.onGround = false;
@@ -165,7 +247,7 @@ function spawnNextEnemy() {
       const dx = (player.x + player.w / 2) - c.x;
       const dy = (player.y + player.h / 2) - c.y;
       if (Math.hypot(dx, dy) < c.r + Math.min(player.w, player.h) / 2) {
-        c.taken = true; coinCount++; coinsEl.textContent = `🪙 ${coinCount}`;
+        c.taken = true; coinCount++; coinsEl && (coinsEl.textContent = `🪙 ${coinCount}`);
       }
     });
 
@@ -180,20 +262,20 @@ function spawnNextEnemy() {
       const mod = (e.x + 100000) % cycle;
       if (mod < 2 || mod > cycle - 2) { e.vx *= -1; e.facing = e.vx < 0 ? -1 : 1; }
 
-      // 当たり判定
+      // 当たり判定（踏みつけを少し緩める：閾値24）
       const a = { x: player.x, y: player.y, w: player.w, h: player.h };
       if (rectIntersect(a, e)) {
-        const stomp = player.vy > 0 && (player.y + player.h) - e.y < 18;
+        const stomp = player.vy > 0 && (player.y + player.h) - e.y < 24;
         if (stomp) {
           player.vy = -JUMP * 0.6;
-          e.x = -99999; e.vx = 0;           // 退場
-          statusEl.textContent = 'やっつけた！';
+          e.x = -99999; e.vx = 0; // 退場
+          statusEl && (statusEl.textContent = 'やっつけた！');
         } else {
           // 優しめ：スタート付近へ戻す
           player.x = 2 * TILE;
           player.y = (FLOOR_Y - 1) * TILE - player.h;
           player.vx = 0; player.vy = 0;
-          statusEl.textContent = 'いたっ！もう一度';
+          statusEl && (statusEl.textContent = 'いたっ！もう一度');
         }
       }
     });
@@ -205,7 +287,7 @@ function spawnNextEnemy() {
       finished = true;
       victory.active = true;
       victory.t = 0;
-      statusEl.textContent = `ゴール！コイン ${coinCount} 枚`;
+      statusEl && (statusEl.textContent = `ゴール！コイン ${coinCount} 枚`);
       setTimeout(() => alert(`ゴール！がんばったね！\nコイン ${coinCount} 枚`), 100);
     }
 
@@ -223,7 +305,7 @@ function spawnNextEnemy() {
     ctx.fillStyle = '#87CEEB';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // 雲
+    // 雲（遠景）
     ctx.fillStyle = 'rgba(255,255,255,0.85)';
     for (let i = 0; i < 8; i++) {
       const x = (i * 220) - (camera.x * 0.2) % (canvas.width + 300);
@@ -257,18 +339,10 @@ function spawnNextEnemy() {
       ctx.restore();
     });
 
-    // 敵（画像）
+    // 敵（安全描画）
     enemies.forEach(e => {
       if (e.x + e.w < camera.x || e.x > camera.x + camera.w) return;
-      ctx.save();
-      if (e.facing === -1) {
-        ctx.translate((e.x - camera.x) + e.w, e.y - camera.y);
-        ctx.scale(-1, 1);
-        ctx.drawImage(e.img, 0, 0, e.w, e.h);
-      } else {
-        ctx.drawImage(e.img, e.x - camera.x, e.y - camera.y, e.w, e.h);
-      }
-      ctx.restore();
+      drawEnemySafe(e);
     });
 
     // ゴール旗
@@ -284,36 +358,15 @@ function spawnNextEnemy() {
       ctx.fill();
     }
 
-    // プレイヤー（画像）
-    ctx.save();
-    if (player.facing === -1) {
-      ctx.translate((player.x - camera.x) + player.w, player.y - camera.y);
-      ctx.scale(-1, 1);
-      ctx.drawImage(playerImg, 0, 0, player.w, player.h);
-    } else {
-      ctx.drawImage(playerImg, player.x - camera.x, player.y - camera.y, player.w, player.h);
-    }
-    ctx.restore();
+    // プレイヤー（安全描画）
+    drawPlayerSafe(player.x - camera.x, player.y - camera.y, player.w, player.h, player.facing);
 
-    // 勝利演出：mio.png を奥（小・薄）→手前（大・濃）へ
+    // 勝利演出：mio.png 奥→手前
     if (victory.active) {
       const duration = 180; // 約3秒
       const t = clamp(victory.t / duration, 0, 1);
       const k = easeOutCubic(t);
-      const baseScale = 0.25;   // 奥
-      const endScale  = 1.4;    // 手前
-      const scale = baseScale + (endScale - baseScale) * k;
-      const alpha = 0.2 + 0.8 * k;
-      const yLift = (1 - k) * 60;
-
-      ctx.save();
-      ctx.globalAlpha = alpha;
-      ctx.translate(canvas.width / 2, canvas.height / 2 - yLift);
-      ctx.scale(scale, scale);
-      const w = mioImg.width || 320;
-      const h = mioImg.height || 320;
-      ctx.drawImage(mioImg, -w / 2, -h / 2, w, h);
-      ctx.restore();
+      drawMioVictorySafe(k);
     }
   }
 
@@ -326,7 +379,20 @@ function spawnNextEnemy() {
     ctx.fill();
   }
 
-  // スタート
-  statusEl.textContent = '左右キーで移動、スペースでジャンプ！';
-  requestAnimationFrame(update);
+  // ===== 画像ロード完了後に開始 =====
+  (async () => {
+    const playerRes  = await loadImageSafe('Image.png');
+    const enemiesRes = await Promise.all(enemyOrderFiles.map(f => loadImageSafe(f)));
+    const mioRes     = await loadImageSafe('mio.png');
+
+    sprites = {
+      player:  playerRes,
+      enemies: enemiesRes,
+      mio:     mioRes
+    };
+
+    statusEl && (statusEl.textContent = '左右キーで移動、スペースでジャンプ！');
+    requestAnimationFrame(update);
   })();
+
+})();
