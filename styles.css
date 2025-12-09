@@ -4,13 +4,15 @@
   --ground: #3b2f2f;  /* 地面色 */
   --ui: #ffffff;
   --accent: #ffcc00;  /* コイン色 */
-  --enemy: #c0392b;
-  --player: #2ecc71;
 }
 
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
-body { font-family: system-ui, "Segoe UI", "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", Meiryo, sans-serif; background: var(--bg); }
+body {
+  font-family: system-ui, "Segoe UI", "Helvetica Neue", Arial,
+               "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
+  background: var(--bg);
+}
 
 .topbar {
   display: flex; justify-content: space-between; align-items: center;
@@ -20,31 +22,25 @@ body { font-family: system-ui, "Segoe UI", "Helvetica Neue", Arial, "Hiragino Ka
 .topbar h1 { font-size: 1.1rem; margin: 0; }
 .hud span { margin-left: 1rem; }
 
-.game-wrap {
-  display: grid; place-items: center;
-  padding: .5rem;
-}
+.game-wrap { display: grid; place-items: center; padding: .5rem; }
 canvas#game {
   border: 6px solid #fff; border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,.25);
   max-width: 96vw; height: auto; background: linear-gradient(#87CEEB 60%, #b0e0e6);
 }
 
-.touch-controls {
-  margin-top: .75rem; display: none; gap: .5rem;
-}
+.touch-controls { margin-top: .75rem; display: none; gap: .5rem; }
 .touch-controls .btn {
   font-size: 1.5rem; padding: .6rem 1rem; border-radius: 10px; border: none;
   background: rgba(255,255,255,.85); box-shadow: 0 4px 12px rgba(0,0,0,.2);
 }
 .footer { text-align: center; color: #fff; padding: .5rem; }
 
-@media (max-width: 768px) {
-  .touch-controls { display: flex; justify-content: center; }
-  .topbar h1 { font-size: 1rem; }
-}
-
 /* スクリーンリーダー専用テキスト */
 .sr-only {
   position: absolute; width: 1px; height: 1px;
   padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0;
 }
+
+@media (max-width: 768px) {
+  .touch-controls { display: flex; justify-content: center; }
+  .topbar h1 { font-size: 1rem; }
