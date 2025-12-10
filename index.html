@@ -1,53 +1,49 @@
-<!DOCTYPE html>
+
+<!doctype html>
 <html lang="ja">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>ちびジャンプ！(Mario-like)</title>
-
-  <!-- 正しいCSSの読み込み -->
-  <link rel="stylesheet" href="styles.css" />
-
-  <noscript>このゲームを遊ぶには JavaScript を有効にしてください。</noscript>
+  <title>ちびジャンプ！ - ゴール演出付き</title>
+  <!-- faviconは未配置404を避けるため一旦省略 -->
+  <link rel="preload" as="image" href="Image.png">
+  <link rel="preload" as="image" href="mama.png">
+  <link rel="preload" as="image" href="kairi.png">
+  <link rel="preload" as="image" href="pocha.png">
+  <link rel="preload" as="image" href="papa.png">
+  <link rel="preload" as="image" href="mio.png">
+  <link rel="preload" as="image" href="mio2.png">
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <header class="topbar">
-    <h1>ちびジャンプ！</h1>
-    <div class="hud" aria-live="polite">
-      <span id="coins" aria-label="コイン枚数">🪙 0</span>
-      <span id="status">準備OK</span>
-    </div>
+    <h1 class="title">ちびジャンプ！</h1>
   </header>
 
   <main class="game-wrap">
-    <p class="sr-only">
-      左右キーで移動、スペースキーでジャンプ。コインを集めてゴール旗へ！
-    </p>
+    <canvas id="game" width="960" height="540" aria-label="ゲーム画面"></canvas>
 
-    <canvas
-      id="game"
-      width="960"
-      height="540"
-      role="img"
-      aria-label="横スクロールゲームのプレイ画面">
-      お使いのブラウザは Canvas に対応していないようです。最新の Chrome / Edge / Safari でお試しください。
-    </canvas>
+    <!-- モバイル用大ボタン -->
+    <div class="pad">
+      <button id="btnLeft" class="pad-btn" aria-label="左に移動">◀</button>
+      <button id="btnJump" class="pad-btn primary" aria-label="ジャンプ">⤴</button>
+      <button id="btnRight" class="pad-btn" aria-label="右に移動">▶</button>
+    </div>
 
-    <!-- タブレット向けバーチャルボタン -->
-    <div class="touch-controls" aria-hidden="false" role="group" aria-label="タブレット操作ボタン">
-      <button id="btn-left"  class="btn touch-btn" title="左へ"   aria-label="左へ移動">◀︎</button>
-      <button id="btn-jump"  class="btn touch-btn jump" title="ジャンプ" aria-label="ジャンプ">⤴︎</button>
-      <button id="btn-right" class="btn touch-btn" title="右へ"   aria-label="右へ移動">▶︎</button>
+    <!-- ゴール演出オーバーレイ -->
+    <div id="celebrate" class="celebrate hidden" aria-hidden="true">
+      <img id="mio1" class="mio-img hidden" src="mio.png" alt="mio1">
+      <img id="mio2" class="mio-img hidden" src="mio2.png" alt="mio2">
+      <div id="popMsg" class="pop-msg hidden">安心してください！はいてますよ！</div>
+      <canvas id="fx" width="960" height="540"></canvas>
     </div>
   </main>
 
   <footer class="footer">
-    <small>© 2025 Komiya Family</small>
+    <p>←／→ で移動、Space でジャンプ。敵に当たっても直前から再開します。</p>
   </footer>
 
-  <!-- 正しいJSの読み込み（deferでDOM構築後に実行） -->
+  <!-- スクリプトは最後で確実に読み込み -->
   <script src="app.js" defer></script>
-
 </body>
 </html>
-
