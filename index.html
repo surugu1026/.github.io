@@ -1,10 +1,9 @@
-
 <!doctype html>
 <html lang="ja">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>ちびジャンプ！ - ゴール演出付き</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>ちびジャンプ！（Mario-like）</title>
   <!-- faviconは未配置404を避けるため一旦省略 -->
   <link rel="preload" as="image" href="Image.png">
   <link rel="preload" as="image" href="mama.png">
@@ -16,34 +15,25 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <header class="topbar">
-    <h1 class="title">ちびジャンプ！</h1>
+  <header class="game-header">
+    <h1 class="title">ちびジャンプ！（Mario-like）</h1>
+    <p class="hint">左右キーで移動、スペースでジャンプ。コイン（★）を拾ってゴール旗へ！</p>
   </header>
 
+  <!-- ゲームキャンバス -->
   <main class="game-wrap">
-    <canvas id="game" width="960" height="540" aria-label="ゲーム画面"></canvas>
-
-    <!-- モバイル用大ボタン -->
-    <div class="pad">
-      <button id="btnLeft" class="pad-btn" aria-label="左に移動">◀</button>
-      <button id="btnJump" class="pad-btn primary" aria-label="ジャンプ">⤴</button>
-      <button id="btnRight" class="pad-btn" aria-label="右に移動">▶</button>
-    </div>
-
-    <!-- ゴール演出オーバーレイ -->
-    <div id="celebrate" class="celebrate hidden" aria-hidden="true">
-      <img id="mio1" class="mio-img hidden" src="mio.png" alt="mio1">
-      <img id="mio2" class="mio-img hidden" src="mio2.png" alt="mio2">
-      <div id="popMsg" class="pop-msg hidden">安心してください！はいてますよ！</div>
-      <canvas id="fx" width="960" height="540"></canvas>
-    </div>
+    <canvas id="gameCanvas" width="960" height="540" aria-label="ゲーム画面"></canvas>
   </main>
 
-  <footer class="footer">
-    <p>←／→ で移動、Space でジャンプ。敵に当たっても直前から再開します。</p>
-  </footer>
+  <!-- ゴール演出オーバーレイ -->
+  <div id="goalOverlay" class="goal-overlay" hidden>
+    <div class="goal-content">
+      mio.png
+      mio2.png
+      <div id="goalMsg" class="goal-msg" hidden>安心してください！はいてますよ！</div>
+    </div>
+  </div>
 
-  <!-- スクリプトは最後で確実に読み込み -->
   <script src="app.js" defer></script>
 </body>
 </html>
