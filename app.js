@@ -93,11 +93,12 @@
     enemies: [], // [{img, ok, file}, ...]
     boss:   { img: null, ok: false },
     mio:    { img: null, ok: false },
-    mio2:   { img: null, ok: false } // ★ 追加
+    mio2:   { img: null, ok: false }
   };
 
   // ===== ステージ（穴の追加あり） =====
   const platforms = [];
+  // 上段足場の“穴”定義：ジャンプで越えられる欠損区間（2〜3タイル）
   const holes = [
     { start: 28,  len: 2 },  // 小穴1
     { start: 56,  len: 2 },  // 小穴2
@@ -107,7 +108,9 @@
   const isHole = (i) => holes.some(h => i >= h.start && i < h.start + h.len);
 
   for (let i = 0; i < WORLD_WIDTH; i++) {
+    // 地面
     platforms.push({ x: i * TILE, y: FLOOR_Y * TILE, w: TILE, h: TILE });
+    // 既存のパターン生成に“穴”を反映（FLOOR_Y-2 は欠損あり）
     if (i % 15 === 5 && !isHole(i))  platforms.push({ x: i * TILE, y: (FLOOR_Y - 2) * TILE, w: TILE, h: TILE });
     if (i % 23 === 10)               platforms.push({ x: i * TILE, y: (FLOOR_Y - 4) * TILE, w: TILE, h: TILE });
   }
@@ -145,7 +148,7 @@
     if (nextEnemyIndex >= enemyOrderFiles.length) return;
     const x = spawnX[nextEnemyIndex];
     const w = 52 * 2, h = 52 * 2;
-    const vx = 1.8 + 0.2 * nextEnemyIndex;
+    const vx = 1.8 + 0.2 * nextEnemyIndex; // ベース速度 + 後半加速
     enemies.push({ x, y: (FLOOR_Y - 1) * TILE - h, w, h, vx, facing: -1, slotIndex: nextEnemyIndex });
     nextEnemyIndex++;
   }
@@ -159,22 +162,83 @@
   const victory = { active: false, t: 0 };
 
   // ===== ボス（落下→ぴょんぴょんジャンプ） =====
-  const BOSS_SPEED = 2.4;
+  const BOSS_SPEED = 1.8;           // ★ 以前の 2.4 から “少し遅く”
   const BOSS_JUMP = 14;
   const BOSS_HOP_COOLDOWN = 45;
   let boss = {
     spawned: false, state: 'sleep', x: 0, y: 0,
     w: 96, h: 96, vx: 0, vy: 0, speed: BOSS_SPEED,
-    hp: 3, inv: 0, facing: -1, onGround: false, hopCD: 0
+    hp: 1, inv: 0, facing: -1, onGround: false, hopCD: 0
   };
+
   function spawnBossIfNearGoal() {
     if (!boss.spawned && player.x > goal.x - TILE * 12) {
       boss.spawned = true; boss.state = 'drop';
       boss.x = goal.x - TILE * 6; boss.y = (FLOOR_Y - 6) * TILE - 400;
-      boss.vx = 0; boss.vy = 2; boss.hp = 3; boss.inv = 0; boss.onGround = false; boss.hopCD = 0; boss.facing = -1;
+      boss.vx = 0; boss.vy = 2; boss.hp = 1; boss.inv = 0; boss.onGround = false; boss.hopCD = 0; boss.facing = -1;
       statusEl && (statusEl.textContent = 'ボス出現！');
     }
   }
+
+  // ===== 爆発エフェクト（ボス撃破用） =====
+  const explosions = [];
+  function spawnExplosion(x, y) {
+    const n = 48; // 粒子数
+    const parts = [];
+    for (let i = 0; i < n; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const sp  = 3 + Math.random() * 5;
+      parts.push({
+        x, y,
+        vx: Math.cos(ang) * sp,
+        vy: Math.sin(ang) * sp - 1.0,
+        life: 60, max: 60,
+        color: i % 3 === 0 ? '#ffd700' : (i % 3 === 1 ? '#ff66aa' : '#66b3ff'),
+        size: 3 + Math.random() * 4
+      });
+    }
+    explosions.push({ parts, ring: { x, y, r: 12, life: 30 } });
+  }
+  function updateExplosions() {
+    for (let i = explosions.length - 1; i >= 0; i--) {
+      const ex = explosions[i];
+      const parts = ex.parts;
+      for (let j = parts.length - 1; j >= 0; j--) {
+        const p = parts[j];
+        p.vy += 0.25;           // 重力
+        p.vx *= 0.98; p.vy *= 0.98; // 摩擦
+        p.x += p.vx; p.y += p.vy;
+        p.life--;
+        if (p.life <= 0) parts.splice(j, 1);
+      }
+      if (ex.ring) { ex.ring.r += 8; ex.ring.life--; }
+      if (parts.length === 0 && (!ex.ring || ex.ring.life <= 0)) explosions.splice(i, 1);
+    }
+  }
+  function drawExplosions() {
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter'; // 加算合成で明るく
+    for (const ex of explosions) {
+      for (const p of ex.parts) {
+        const alpha = p.life / p.max;
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x - camera.x, p.y - camera.y, p.size * alpha, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      if (ex.ring && ex.ring.life > 0) {
+        ctx.globalAlpha = Math.max(0, ex.ring.life / 30) * 0.6;
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(ex.ring.x - camera.x, ex.ring.y - camera.y, ex.ring.r, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
   function updateBoss() {
     if (!boss.spawned || boss.state === 'dead') return;
     boss.inv = Math.max(0, boss.inv - 1);
@@ -213,12 +277,17 @@
       // プレイヤー当たり
       const pb = { x: player.x, y: player.y, w: player.w, h: player.h };
       if (rectIntersect(pb, a)) {
-        const stomp = player.vy > 0 && (player.y + player.h) - boss.y < 28 && boss.inv === 0;
+        const stomp = player.vy > 0 && (player.y + player.h) - boss.y < 28;
         if (stomp) {
-          player.vy = -JUMP * 0.65; boss.hp -= 1; boss.inv = 40; boss.x += (player.x < boss.x ? TILE : -TILE);
-          statusEl && (statusEl.textContent = `ボスにダメージ！残り ${boss.hp}`);
-          if (boss.hp <= 0) { boss.state = 'dead'; boss.y = -99999; statusEl && (statusEl.textContent = 'ボス撃破！'); }
+          // ★ 1回踏めば即撃破 ＋ 爆発エフェクト
+          player.vy = -JUMP * 0.65;    // 跳ね返り
+          spawnExplosion(boss.x + boss.w / 2, boss.y + boss.h / 2);
+          boss.state = 'dead';         // 即 dead
+          boss.y = -99999;             // 画面外へ退避
+          boss.hp = 0; boss.inv = 0; boss.vx = 0;
+          statusEl && (statusEl.textContent = 'ボス撃破！');
         } else {
+          // ボス接触時も“少し戻す”
           const rewindTiles = 4;
           player.x = clamp(player.x - rewindTiles * TILE, 0, WORLD_WIDTH * TILE - player.w);
           player.y = (FLOOR_Y - 1) * TILE - player.h;
@@ -234,7 +303,7 @@
   const rectIntersect = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
   const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
 
-  // ===== 安全描画 =====
+  // ===== 安全描画（プレイヤー・敵・ボス） =====
   function drawPlayerSafe(x, y, w, h, facing) {
     const res = sprites.player;
     if (res.ok && res.img.complete && res.img.naturalWidth > 0) {
@@ -277,19 +346,18 @@
 
   // ===== 勝利演出：mio + mio2 を派手に動かす =====
   function drawVictoryPair(k) {
-    // k: 0..1（easeOutCubicで滑らかに増加）
     const cx = canvas.width / 2;
-    const cy = canvas.height / 2 - (1 - k) * 60; // 既存の持ち上げ効果を継続
+    const cy = canvas.height / 2 - (1 - k) * 60; // 既存の持ち上げ効果
 
-    const t = victory.t; // フレーム（updateで加算）
-    // 回転（逆回転）、拡大縮小の脈動、周回軌道
+    const t = victory.t; // フレームカウンタ
+    // 回転（逆回転）、拡大縮小、周回軌道
     const spin1 = t * 0.06;
     const spin2 = -t * 0.08;
 
     const pulsate1 = 0.25 + 0.15 * Math.sin(t * 0.12);
     const pulsate2 = 0.28 + 0.18 * Math.sin(t * 0.15 + Math.PI / 3);
 
-    const orbit1 = 40 + 60 * k;  // k に応じて軌道半径拡大
+    const orbit1 = 40 + 60 * k;  // k に応じて半径拡大
     const orbit2 = 60 + 80 * k;
 
     const ox1 = Math.cos(t * 0.05) * orbit1;
@@ -304,7 +372,6 @@
       ctx.rotate(angle);
       ctx.scale(scale, scale);
 
-      // 軽いグロー（薄い塗り）
       ctx.globalAlpha = 0.85;
       if (res.ok && res.img.complete && res.img.naturalWidth > 0) {
         const w = res.img.naturalWidth, h = res.img.naturalHeight;
@@ -317,7 +384,6 @@
         // 本体
         ctx.drawImage(res.img, -w / 2, -h / 2, w, h);
       } else {
-        // フォールバック（円）
         const r = 160;
         ctx.fillStyle = tint;
         ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
@@ -325,7 +391,7 @@
       ctx.restore();
     }
 
-    // 本体2枚を描画（色味を分けて華やかさアップ）
+    // 本体2枚
     drawOne(sprites.mio,  cx + ox1, cy + oy1, 1.0 + pulsate1 * (k * 1.2), spin1, '#ff66aa');
     drawOne(sprites.mio2, cx + ox2, cy + oy2, 1.0 + pulsate2 * (k * 1.2), spin2, '#66b3ff');
 
@@ -348,7 +414,7 @@
 
   // ===== メインループ =====
   function update() {
-    if (finished) { victory.t += 1; draw(); requestAnimationFrame(update); return; }
+    if (finished) { victory.t += 1; updateExplosions(); draw(); requestAnimationFrame(update); return; }
 
     // 入力→速度
     player.vx = 0;
@@ -428,6 +494,9 @@
       }
     }
 
+    // エフェクト更新
+    updateExplosions();
+
     // カメラ
     camera.x = clamp(player.x - camera.w / 2, 0, (WORLD_WIDTH * TILE) - camera.w);
 
@@ -470,6 +539,9 @@
     // ボス
     drawBossSafe();
 
+    // 爆発エフェクト（ボス撃破時）
+    drawExplosions();
+
     // ゴール旗
     if (goal.x + goal.w >= camera.x && goal.x <= camera.x + camera.w) {
       ctx.fillStyle = '#555'; ctx.fillRect(goal.x - camera.x, goal.y - camera.y, 6, goal.h);
@@ -489,7 +561,7 @@
       const duration = 180; const t = clamp(victory.t / duration, 0, 1); const k = easeOutCubic(t);
       drawVictoryPair(k);
 
-      // 既存メッセージ（同時表示）
+      // メッセージ
       ctx.save();
       ctx.fillStyle = '#111';
       ctx.font = '24px "Noto Sans JP", system-ui, sans-serif';
@@ -516,7 +588,7 @@
     const enemiesRes = await Promise.all(enemyOrderFiles.map(f => loadImageSafe(f)));
     const bossRes    = await loadImageSafe('boss.png');
     const mioRes     = await loadImageSafe('mio.png');
-    const mio2Res    = await loadImageSafe('mio2.png'); // ★ 追加
+    const mio2Res    = await loadImageSafe('mio2.png');
     sprites = { player: playerRes, enemies: enemiesRes, boss: bossRes, mio: mioRes, mio2: mio2Res };
     if (statusEl) statusEl.textContent = '左右キーで移動、スペースでジャンプ！';
     requestAnimationFrame(update);
