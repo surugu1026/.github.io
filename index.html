@@ -1,39 +1,44 @@
+
 <!doctype html>
 <html lang="ja">
 <head>
   <meta charset="utf-8" />
+  <title>ちびジャンプ！</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>ちびジャンプ！（Mario-like）</title>
-  <!-- faviconは未配置404を避けるため一旦省略 -->
-  <link rel="preload" as="image" href="Image.png">
-  <link rel="preload" as="image" href="mama.png">
-  <link rel="preload" as="image" href="kairi.png">
-  <link rel="preload" as="image" href="pocha.png">
-  <link rel="preload" as="image" href="papa.png">
-  <link rel="preload" as="image" href="mio.png">
-  <link rel="preload" as="image" href="mio2.png">
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
-  <header class="game-header">
-    <h1 class="title">ちびジャンプ！（Mario-like）</h1>
-    <p class="hint">左右キーで移動、スペースでジャンプ。コイン（★）を拾ってゴール旗へ！</p>
+  <!-- ヘッダー -->
+  <header class="header">
+    <h1 class="app-title">ちびジャンプ！（Mario-like）</h1>
   </header>
 
-  <!-- ゲームキャンバス -->
-  <main class="game-wrap">
-    <canvas id="gameCanvas" width="960" height="540" aria-label="ゲーム画面"></canvas>
-  </main>
-
-  <!-- ゴール演出オーバーレイ -->
-  <div id="goalOverlay" class="goal-overlay" hidden>
-    <div class="goal-content">
-      mio.png
-      mio2.png
-      <div id="goalMsg" class="goal-msg" hidden>安心してください！はいてますよ！</div>
-    </div>
+  <!-- HUD -->
+  <div id="hud" class="hud">
+    <span id="coins">🪙 0</span>
+    <span id="status"></span>
   </div>
 
-  <script src="app.js" defer></script>
+  <!-- メインレイアウト -->
+  <main class="layout">
+    <!-- ゲームキャンバス -->
+    <canvas id="game" width="960" height="540" aria-label="ゲーム画面"></canvas>
+
+    <!-- モバイル操作ボタン -->
+    <div class="controls">
+      <button id="btn-left"  aria-label="左へ">◀︎</button>
+      <button id="btn-right" aria-label="右へ">▶︎</button>
+      <button id="btn-jump"  aria-label="ジャンプ">⤴︎</button>
+    </div>
+
+    <!-- 注意：Canvas未対応のブラウザ向け -->
+    <noscript>JavaScriptを有効にしてください。</noscript>
+    <p class="canvas-note">
+      お使いのブラウザが Canvas に対応していない場合は、最新の Chrome / Edge / Safari をお試しください。
+    </p>
+  </main>
+
+  <!-- ゲームロジック -->
+  <script src="./app.js"></script>
 </body>
 </html>
