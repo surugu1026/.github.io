@@ -32,9 +32,7 @@
       bgmReady = true; bgmStarted = true;
       document.removeEventListener('pointerdown', tryStartBGMOnce, { once: true });
       document.removeEventListener('touchstart',  tryStartBGMOnce, { once: true });
-    } catch (err) {
-      console.warn('BGM再生に失敗:', err);
-    }
+    } catch (err) { console.warn('BGM再生に失敗:', err); }
   }
 
   // ===== 入力 =====
@@ -94,12 +92,12 @@
     player: { img: null, ok: false },
     enemies: [], // [{img, ok, file}, ...]
     boss:   { img: null, ok: false },
-    mio:    { img: null, ok: false }
+    mio:    { img: null, ok: false },
+    mio2:   { img: null, ok: false } // ★ 追加
   };
 
   // ===== ステージ（穴の追加あり） =====
   const platforms = [];
-  // 上段足場の“穴”定義：ジャンプで越えられる欠損区間（2〜3タイル）
   const holes = [
     { start: 28,  len: 2 },  // 小穴1
     { start: 56,  len: 2 },  // 小穴2
@@ -109,9 +107,7 @@
   const isHole = (i) => holes.some(h => i >= h.start && i < h.start + h.len);
 
   for (let i = 0; i < WORLD_WIDTH; i++) {
-    // 地面
     platforms.push({ x: i * TILE, y: FLOOR_Y * TILE, w: TILE, h: TILE });
-    // 既存のパターン生成に“穴”を反映（FLOOR_Y-2 は欠損あり）
     if (i % 15 === 5 && !isHole(i))  platforms.push({ x: i * TILE, y: (FLOOR_Y - 2) * TILE, w: TILE, h: TILE });
     if (i % 23 === 10)               platforms.push({ x: i * TILE, y: (FLOOR_Y - 4) * TILE, w: TILE, h: TILE });
   }
@@ -131,12 +127,11 @@
   const enemyOrderFiles = ['mama.png', 'kairi.png', 'pocha.png', 'papa.png'];
 
   // ===== ゴール旗（距離半分）＆カメラ =====
-  // WORLD_WIDTH のほぼ中央へ移設（従来は末尾近くだった）
   const goal = { x: (Math.floor(WORLD_WIDTH / 2) - 4) * TILE, y: (FLOOR_Y - 5) * TILE, w: 10, h: 200 };
-  const goalTileX = Math.floor(goal.x / TILE); // 目安用（≈ 96）
+  const goalTileX = Math.floor(goal.x / TILE); // ≈ 96
   const camera = { x: 0, y: 0, w: canvas.width, h: canvas.height };
 
-  // 敵の出現位置（ゴール半分仕様でも全員出現するよう調整）
+  // 敵の出現位置（papa をゴール前に配置）
   const spawnX = [
     18 * TILE,               // mama
     45 * TILE,               // kairi
@@ -150,7 +145,7 @@
     if (nextEnemyIndex >= enemyOrderFiles.length) return;
     const x = spawnX[nextEnemyIndex];
     const w = 52 * 2, h = 52 * 2;
-    const vx = 1.8 + 0.2 * nextEnemyIndex; // ベース速度 + 後半加速
+    const vx = 1.8 + 0.2 * nextEnemyIndex;
     enemies.push({ x, y: (FLOOR_Y - 1) * TILE - h, w, h, vx, facing: -1, slotIndex: nextEnemyIndex });
     nextEnemyIndex++;
   }
@@ -224,7 +219,6 @@
           statusEl && (statusEl.textContent = `ボスにダメージ！残り ${boss.hp}`);
           if (boss.hp <= 0) { boss.state = 'dead'; boss.y = -99999; statusEl && (statusEl.textContent = 'ボス撃破！'); }
         } else {
-          // ボス接触時も“少し戻す”
           const rewindTiles = 4;
           player.x = clamp(player.x - rewindTiles * TILE, 0, WORLD_WIDTH * TILE - player.w);
           player.y = (FLOOR_Y - 1) * TILE - player.h;
@@ -280,13 +274,75 @@
     } else { ctx.fillStyle = '#6c3483'; ctx.fillRect(x, y, boss.w, boss.h); }
     ctx.restore();
   }
-  function drawMioVictorySafe(k) {
-    const res = sprites.mio; const baseScale = 0.25, endScale = 1.4;
-    const scale = baseScale + (endScale - baseScale) * k; const alpha = 0.2 + 0.8 * k; const yLift = (1 - k) * 60;
-    ctx.save(); ctx.globalAlpha = alpha; ctx.translate(canvas.width / 2, canvas.height / 2 - yLift); ctx.scale(scale, scale);
-    if (res.ok && res.img.complete && res.img.naturalWidth > 0) {
-      const w = res.img.naturalWidth, h = res.img.naturalHeight; ctx.drawImage(res.img, -w / 2, -h / 2, w, h);
-    } else { const r = 160; ctx.fillStyle = '#ff66aa'; ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill(); }
+
+  // ===== 勝利演出：mio + mio2 を派手に動かす =====
+  function drawVictoryPair(k) {
+    // k: 0..1（easeOutCubicで滑らかに増加）
+    const cx = canvas.width / 2;
+    const cy = canvas.height / 2 - (1 - k) * 60; // 既存の持ち上げ効果を継続
+
+    const t = victory.t; // フレーム（updateで加算）
+    // 回転（逆回転）、拡大縮小の脈動、周回軌道
+    const spin1 = t * 0.06;
+    const spin2 = -t * 0.08;
+
+    const pulsate1 = 0.25 + 0.15 * Math.sin(t * 0.12);
+    const pulsate2 = 0.28 + 0.18 * Math.sin(t * 0.15 + Math.PI / 3);
+
+    const orbit1 = 40 + 60 * k;  // k に応じて軌道半径拡大
+    const orbit2 = 60 + 80 * k;
+
+    const ox1 = Math.cos(t * 0.05) * orbit1;
+    const oy1 = Math.sin(t * 0.07) * orbit1;
+
+    const ox2 = Math.cos(t * 0.04 + Math.PI) * orbit2;
+    const oy2 = Math.sin(t * 0.06 + Math.PI) * orbit2;
+
+    function drawOne(res, x, y, scale, angle, tint) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(angle);
+      ctx.scale(scale, scale);
+
+      // 軽いグロー（薄い塗り）
+      ctx.globalAlpha = 0.85;
+      if (res.ok && res.img.complete && res.img.naturalWidth > 0) {
+        const w = res.img.naturalWidth, h = res.img.naturalHeight;
+        // 下地の光
+        ctx.save();
+        ctx.globalAlpha = 0.20;
+        ctx.fillStyle = tint;
+        ctx.beginPath(); ctx.arc(0, 0, Math.max(w, h) * 0.6, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+        // 本体
+        ctx.drawImage(res.img, -w / 2, -h / 2, w, h);
+      } else {
+        // フォールバック（円）
+        const r = 160;
+        ctx.fillStyle = tint;
+        ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    // 本体2枚を描画（色味を分けて華やかさアップ）
+    drawOne(sprites.mio,  cx + ox1, cy + oy1, 1.0 + pulsate1 * (k * 1.2), spin1, '#ff66aa');
+    drawOne(sprites.mio2, cx + ox2, cy + oy2, 1.0 + pulsate2 * (k * 1.2), spin2, '#66b3ff');
+
+    // スター光線（放射状ライン）
+    ctx.save();
+    ctx.globalAlpha = 0.35;
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = '#ffd700';
+    for (let i = 0; i < 12; i++) {
+      const ang = t * 0.02 + i * (Math.PI * 2 / 12);
+      const r0 = 40;
+      const r1 = 120 + 40 * Math.sin(t * 0.10 + i);
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(ang) * r0, cy + Math.sin(ang) * r0);
+      ctx.lineTo(cx + Math.cos(ang) * r1, cy + Math.sin(ang) * r1);
+      ctx.stroke();
+    }
     ctx.restore();
   }
 
@@ -342,8 +398,7 @@
         const stomp = player.vy > 0 && (player.y + player.h) - e.y < 24;
         if (stomp) { player.vy = -JUMP * 0.6; e.x = -99999; e.vx = 0; if (statusEl) statusEl.textContent = 'やっつけた！'; }
         else {
-          // ★ 敵接触時は“その場から少し戻す”リスタート（スタート地点に戻さない）
-          const rewindTiles = 4; // 少し戻す（≈ 4タイル分）
+          const rewindTiles = 4;
           player.x = clamp(player.x - rewindTiles * TILE, 0, WORLD_WIDTH * TILE - player.w);
           player.y = (FLOOR_Y - 1) * TILE - player.h;
           player.vx = 0; player.vy = 0;
@@ -429,12 +484,12 @@
     // プレイヤー
     drawPlayerSafe(player.x - camera.x, player.y - camera.y, player.w, player.h, player.facing);
 
-    // 勝利演出（mio）＋ メッセージ同時表示
+    // 勝利演出（mio + mio2）＋ メッセージ同時表示
     if (victory.active) {
       const duration = 180; const t = clamp(victory.t / duration, 0, 1); const k = easeOutCubic(t);
-      drawMioVictorySafe(k);
+      drawVictoryPair(k);
 
-      // ★ ご要望：mio.png表示タイミングでメッセージを同時表示
+      // 既存メッセージ（同時表示）
       ctx.save();
       ctx.fillStyle = '#111';
       ctx.font = '24px "Noto Sans JP", system-ui, sans-serif';
@@ -461,7 +516,8 @@
     const enemiesRes = await Promise.all(enemyOrderFiles.map(f => loadImageSafe(f)));
     const bossRes    = await loadImageSafe('boss.png');
     const mioRes     = await loadImageSafe('mio.png');
-    sprites = { player: playerRes, enemies: enemiesRes, boss: bossRes, mio: mioRes };
+    const mio2Res    = await loadImageSafe('mio2.png'); // ★ 追加
+    sprites = { player: playerRes, enemies: enemiesRes, boss: bossRes, mio: mioRes, mio2: mio2Res };
     if (statusEl) statusEl.textContent = '左右キーで移動、スペースでジャンプ！';
     requestAnimationFrame(update);
   })();
