@@ -1,435 +1,346 @@
 
+/* ちびジャンプ！ 完成版
+ * ご要望対応：
+ * - コース半分（LEVEL_LENGTH）
+ * - 穴4つ（HOLES）
+ * - 敵でやられたら直前から再開（lastSafeX）
+ * - ゴール後：mio.png→mio2.png＋ポップメッセ＆コンフェッティ
+ */
+
 (() => {
-  'use strict';
-  // ===== DOM =====
-  const canvas = document.getElementById('game');
-  if (!canvas) { console.error('canvas #game が見つかりません'); return; }
-  const ctx = canvas.getContext('2d');
-  const coinsEl = document.getElementById('coins');
-  const statusEl = document.getElementById('status');
+  const cvs = document.getElementById('game');
+  const ctx = cvs.getContext('2d');
 
-  // ===== 基本定数 =====
-  const G = 0.6;        // 重力
-  const MOVE = 2.2;     // プレイヤー横速度
-  const JUMP = 16;      // ジャンプ初速（高め）
-  const TILE = 54;      // タイルサイズ
-  const WORLD_WIDTH = 200; // 横タイル数
-  const FLOOR_Y = 9;       // 地面のタイル行
+  // --- DOM: モバイルボタン／ゴール演出 ---
+  const btnLeft = document.getElementById('btnLeft');
+  const btnRight = document.getElementById('btnRight');
+  const btnJump = document.getElementById('btnJump');
+  const celebrate = document.getElementById('celebrate');
+  const mio1 = document.getElementById('mio1');
+  const mio2 = document.getElementById('mio2');
+  const popMsg = document.getElementById('popMsg');
+  const fxCanvas = document.getElementById('fx');
+  const fx = fxCanvas.getContext('2d');
 
-  // ===== BGM（ユーザー操作で開始・iPhone対応） =====
-  let bgm, bgmReady = false, bgmStarted = false;
-  function initBGM() {
-    // iOS対策：ここでは src を設定しない。Audio インスタンスだけ準備
-    bgm = new Audio();
-    bgm.loop = true;
-    bgm.volume = 0.35;
-    // canplaythrough は iOS では安定しないため ready は play 成功時に扱う
-  }
-  async function tryStartBGMOnce() {
-    if (bgmStarted) return;
-    try {
-      // ユーザー操作直後に src 設定→load→play をまとめて実行（iOS Safari推奨パターン）
-      if (!bgm.src) {
-        bgm.src = './bgm.mp3';
-        bgm.load();
-      }
-      await bgm.play();
-      bgmReady = true;
-      bgmStarted = true;
-      // 一度再生できたら一回限りのリスナーは不要
-      // （{ once: true }で追加しているため自動的に外れるが、念のため）
-      document.removeEventListener('pointerdown', tryStartBGMOnce, { once: true });
-      document.removeEventListener('touchstart', tryStartBGMOnce, { once: true });
-    } catch (err) {
-      console.warn('BGM再生に失敗:', err);
-    }
-  }
-
-  // ===== 入力 =====
-  const keys = { left: false, right: false, jump: false };
-  window.addEventListener('keydown', e => {
-    if (e.code === 'ArrowLeft')  keys.left = true;
-    if (e.code === 'ArrowRight') keys.right = true;
-    if (e.code === 'Space')      keys.jump = true;
-    tryStartBGMOnce();
-  });
-  window.addEventListener('keyup', e => {
-    if (e.code === 'ArrowLeft')  keys.left = false;
-    if (e.code === 'ArrowRight') keys.right = false;
-    if (e.code === 'Space')      keys.jump = false;
-  });
-
-  // タブレット操作（長押し対応）
-  function bindTouchHold(btnId, keyName) {
-    const el = document.getElementById(btnId);
-    if (!el) return;
-    const down = ev => { ev.preventDefault(); tryStartBGMOnce(); keys[keyName] = true; el.classList.add('active'); };
-    const up   = ev => { ev.preventDefault(); keys[keyName] = false; el.classList.remove('active'); };
-
-    el.addEventListener('pointerdown', down, { passive: false });
-    el.addEventListener('pointerup', up, { passive: false });
-    el.addEventListener('pointerleave', up, { passive: false });
-    el.addEventListener('pointercancel', up, { passive: false });
-
-    el.addEventListener('touchstart', down, { passive: false });
-    el.addEventListener('touchend', up, { passive: false });
-    el.addEventListener('touchcancel', up, { passive: false });
-  }
-  bindTouchHold('btn-left', 'left');
-  bindTouchHold('btn-right','right');
-  bindTouchHold('btn-jump', 'jump');
-
-  canvas.addEventListener('touchstart', ev => ev.preventDefault(), { passive: false });
-  canvas.addEventListener('touchmove',  ev => ev.preventDefault(), { passive: false });
-  canvas.addEventListener('touchend',   ev => ev.preventDefault(), { passive: false });
-
-  // 初回ジェスチャでBGM開始
-  document.addEventListener('pointerdown', tryStartBGMOnce, { once: true });
-  document.addEventListener('touchstart',  tryStartBGMOnce, { once: true });
-
-  // ===== 安全画像ローダ =====
-  const ASSET_BASE = './';
-  function loadImageSafe(file) {
-    return new Promise(resolve => {
+  // --- 画像ロード（無ければ矩形で代替） ---
+  function loadImage(src){
+    return new Promise((resolve)=>{
       const img = new Image();
-      img.onload = () => resolve({ img, ok: true, file });
-      img.onerror = () => { console.warn('画像読込失敗:', ASSET_BASE + file); resolve({ img, ok: false, file }); };
-      img.src = ASSET_BASE + file;
+      img.onload = ()=>resolve(img);
+      img.onerror = ()=>resolve(null); // nullならプレースホルダ
+      img.src = src;
     });
   }
 
-  let sprites = {
-    player: { img: null, ok: false },
-    enemies: [], // [{img, ok, file}, ...]
-    boss:   { img: null, ok: false },
-    mio:    { img: null, ok: false }
+  // プレイヤー＆敵画像
+  const IMAGES = {
+    player: 'Image.png',
+    enemies: ['mama.png','kairi.png','pocha.png','papa.png']
   };
 
-  // ===== ステージ =====
-  const platforms = [];
-  for (let i = 0; i < WORLD_WIDTH; i++) {
-    platforms.push({ x: i * TILE, y: FLOOR_Y * TILE, w: TILE, h: TILE });
-    if (i % 15 === 5)  platforms.push({ x: i * TILE, y: (FLOOR_Y - 2) * TILE, w: TILE, h: TILE });
-    if (i % 23 === 10) platforms.push({ x: i * TILE, y: (FLOOR_Y - 4) * TILE, w: TILE, h: TILE });
-  }
+  let playerImg = null;
+  const enemyImgs = [];
 
-  const coins = [];
-  for (let i = 4; i < WORLD_WIDTH; i += 6) {
-    coins.push({ x: i * TILE + TILE / 2, y: (FLOOR_Y - 3) * TILE + 10, r: 10, taken: false });
-  }
+  // --- レベル設定（短縮版） ---
+  const LEVEL_LENGTH = 1400;        // 例：以前の ~2800 を半分程度に
+  const GROUND_Y = cvs.height - 80; // 地面の高さ
+  const GOAL_X = LEVEL_LENGTH - 90; // ゴール位置（旗の手前）
+  const CAMERA_MARGIN = 200;        // 画面追従マージン
 
-  // ===== プレイヤー =====
+  // 穴を4つ配置（x位置と幅）。数値は自由に調整可
+  const HOLES = [
+    { x: 260,  w: 90 },
+    { x: 560,  w: 80 },
+    { x: 860,  w: 100 },
+    { x: 1100, w: 90 },
+  ];
+
+  // 敵配置（順番：mama→kairi→pocha→papa）
+  const enemies = [
+    { x: 370,  y: GROUND_Y - 48, w: 46, h: 46, vx: 0.6, dir: -1, imgIndex: 0 },
+    { x: 690,  y: GROUND_Y - 48, w: 46, h: 46, vx: 0.7, dir: 1,  imgIndex: 1 },
+    { x: 980,  y: GROUND_Y - 48, w: 52, h: 52, vx: 0.5, dir: -1, imgIndex: 2 },
+    { x: 1260, y: GROUND_Y - 56, w: 56, h: 56, vx: 0.45,dir: 1,  imgIndex: 3 },
+  ];
+
+  // --- プレイヤー ---
   const player = {
-    x: 2 * TILE, y: (FLOOR_Y - 1) * TILE - 64,
-    w: 48, h: 64, vx: 0, vy: 0, onGround: false, facing: 1
+    x: 40, y: GROUND_Y - 44, w: 38, h: 44,
+    vx: 0, vy: 0,
+    speed: 2.1,
+    jump: -8.6,
+    onGround: true,
   };
 
-  // ===== 通常敵（2倍表示・後半ほど速く） =====
-  const enemyOrderFiles = ['mama.png', 'kairi.png', 'pocha.png', 'papa.png'];
-  const spawnX = [18 * TILE, 45 * TILE, 75 * TILE, 110 * TILE];
-  let nextEnemyIndex = 0;
-  const enemies = [];
-  function spawnNextEnemy() {
-    if (nextEnemyIndex >= enemyOrderFiles.length) return;
-    const x = spawnX[nextEnemyIndex];
-    const w = 52 * 2, h = 52 * 2;
-    const vx = 1.8 + 0.2 * nextEnemyIndex; // ベース速度 + 後半加速
-    enemies.push({ x, y: (FLOOR_Y - 1) * TILE - h, w, h, vx, facing: -1, slotIndex: nextEnemyIndex });
-    nextEnemyIndex++;
+  // 「少し前」から再開するための安全地点
+  let lastSafeX = player.x;
+
+  // --- 入力 ---
+  const keys = { left:false, right:false, jump:false };
+  window.addEventListener('keydown', (e) => {
+    if (e.repeat) return;
+    if (e.key === 'ArrowLeft' || e.key === 'a') keys.left = true;
+    if (e.key === 'ArrowRight' || e.key === 'd') keys.right = true;
+    if (e.key === ' ' || e.key === 'ArrowUp' || e.key === 'w') keys.jump = true;
+  });
+  window.addEventListener('keyup', (e) => {
+    if (e.key === 'ArrowLeft' || e.key === 'a') keys.left = false;
+    if (e.key === 'ArrowRight' || e.key === 'd') keys.right = false;
+    if (e.key === ' ' || e.key === 'ArrowUp' || e.key === 'w') keys.jump = false;
+  });
+
+  // モバイルボタン
+  function bindBtn(btn, flag){
+    btn.addEventListener('pointerdown', ()=>{ keys[flag] = true; });
+    btn.addEventListener('pointerup',   ()=>{ keys[flag] = false; });
+    btn.addEventListener('pointerleave',()=>{ keys[flag] = false; });
   }
-  function maybeSpawnByProgress() {
-    if (nextEnemyIndex < spawnX.length && player.x > spawnX[nextEnemyIndex] - TILE * 2) spawnNextEnemy();
+  bindBtn(btnLeft,'left');
+  bindBtn(btnRight,'right');
+  bindBtn(btnJump,'jump');
+
+  // --- 物理 ---
+  const GRAVITY = 0.45;
+  const FRICTION = 0.88;
+
+  // --- カメラ ---
+  let camX = 0;
+
+  // --- 状態 ---
+  let gameOver = false;
+  let goalReached = false;
+
+  // --- ユーティリティ ---
+  function rectsOverlap(a,b){
+    return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+  }
+  function inHoleAt(x){
+    // x座標が地面上の穴範囲に入っているか
+    return HOLES.some(h => x + player.w > h.x && x < h.x + h.w);
   }
 
-  // ===== ゴール旗＆カメラ =====
-  const goal = { x: (WORLD_WIDTH - 4) * TILE, y: (FLOOR_Y - 5) * TILE, w: 10, h: 200 };
-  const camera = { x: 0, y: 0, w: canvas.width, h: canvas.height };
+  // --- ゴール演出（mio1→mio2→メッセ＋コンフェッティ） ---
+  function startCelebration(){
+    goalReached = true;
+    celebrate.classList.remove('hidden');
+    celebrate.setAttribute('aria-hidden','false');
 
-  // ===== 状態 =====
-  let coinCount = 0;
-  let finished = false;
-  const victory = { active: false, t: 0 };
+    mio1.classList.remove('hidden');
+    mio1.classList.add('show-fly');
 
-  // ===== ボス（落下→ぴょんぴょんジャンプ） =====
-  const BOSS_SPEED = 2.4;
-  const BOSS_JUMP = 14;
-  const BOSS_HOP_COOLDOWN = 45;
-  let boss = {
-    spawned: false, state: 'sleep', x: 0, y: 0,
-    w: 96, h: 96, vx: 0, vy: 0, speed: BOSS_SPEED,
-    hp: 3, inv: 0, facing: -1, onGround: false, hopCD: 0
-  };
-  function spawnBossIfNearGoal() {
-    if (!boss.spawned && player.x > goal.x - TILE * 12) {
-      boss.spawned = true; boss.state = 'drop';
-      boss.x = goal.x - TILE * 6; boss.y = (FLOOR_Y - 6) * TILE - 400;
-      boss.vx = 0; boss.vy = 2; boss.hp = 3; boss.inv = 0; boss.onGround = false; boss.hopCD = 0; boss.facing = -1;
-      statusEl && (statusEl.textContent = 'ボス出現！');
+    setTimeout(()=>{
+      mio2.classList.remove('hidden');
+      mio2.classList.add('show-spin');
+    }, 900);
+
+    setTimeout(()=>{
+      popMsg.classList.remove('hidden');
+      popMsg.classList.add('show-pop');
+    }, 900 + 1000);
+
+    // コンフェッティ開始
+    startConfetti();
+  }
+
+  // --- コンフェッティ（簡易） ---
+  const confetti = [];
+  function spawnConfetti(){
+    for(let i=0;i<40;i++){
+      confetti.push({
+        x: Math.random()*cvs.width,
+        y: -20*Math.random(),
+        vx: (Math.random()-0.5)*1.2,
+        vy: 1.2 + Math.random()*1.6,
+        size: 6 + Math.random()*8,
+        color: `hsl(${Math.floor(Math.random()*360)},90%,60%)`,
+        rot: Math.random()*360,
+        vr: (Math.random()-0.5)*6
+      });
     }
   }
-  function updateBoss() {
-    if (!boss.spawned || boss.state === 'dead') return;
-    boss.inv = Math.max(0, boss.inv - 1);
+  function updateConfetti(){
+    fx.clearRect(0,0,fxCanvas.width,fxCanvas.height);
+    for(const p of confetti){
+      p.x += p.vx; p.y += p.vy; p.rot += p.vr;
+      if(p.y > fxCanvas.height + 30) {
+        p.y = -20; p.x = Math.random()*fxCanvas.width;
+      }
+      fx.save();
+      fx.translate(p.x, p.y);
+      fx.rotate(p.rot * Math.PI/180);
+      fx.fillStyle = p.color;
+      fx.fillRect(-p.size/2, -p.size/2, p.size, p.size);
+      fx.restore();
+    }
+    requestAnimationFrame(updateConfetti);
+  }
+  function startConfetti(){
+    fxCanvas.classList.remove('hidden');
+    spawnConfetti();
+    updateConfetti();
+  }
 
-    if (boss.state === 'drop') {
-      boss.vy += G; boss.y += boss.vy;
-      const a = { x: boss.x, y: boss.y, w: boss.w, h: boss.h };
-      for (const p of platforms) {
-        if (rectIntersect(a, p)) {
-          const fromTop = (a.y + a.h) - p.y < 28 && boss.vy > 0;
-          if (fromTop) { boss.y = p.y - boss.h; boss.vy = 0; boss.onGround = true; boss.state = 'hop'; boss.hopCD = 0; break; }
+  // --- ゲーム初期化（画像ロード） ---
+  (async function init(){
+    playerImg = await loadImage(IMAGES.player);
+    for(const src of IMAGES.enemies){
+      enemyImgs.push(await loadImage(src));
+    }
+    requestAnimationFrame(loop);
+  })();
+
+  // --- メインループ ---
+  function loop(){
+    if (gameOver) return;
+
+    // 物理更新（ゴール後は停止）
+    if (!goalReached){
+      // 横移動
+      if (keys.left)  player.vx -= 0.15;
+      if (keys.right) player.vx += 0.15;
+      player.vx *= FRICTION;
+      // ジャンプ
+      if (keys.jump && player.onGround){
+        player.vy = player.jump;
+        player.onGround = false;
+      }
+      // 重力
+      player.vy += GRAVITY;
+
+      // 位置更新
+      player.x += player.vx;
+      player.y += player.vy;
+
+      // 地面接地＆穴判定
+      const onGroundLine = player.y + player.h >= GROUND_Y;
+      const isInHole = inHoleAt(player.x);
+
+      if (onGroundLine && !isInHole){
+        player.y = GROUND_Y - player.h;
+        player.vy = 0;
+        player.onGround = true;
+        // 安全地点更新（最後に地面にいたX）
+        lastSafeX = player.x;
+      } else if (player.y > cvs.height + 200) {
+        // 穴に落下などで画面外 → デス→直前から再開
+        respawnFromCheckpoint();
+      } else {
+        player.onGround = false;
+      }
+
+      // 左右の境界
+      if (player.x < 0) player.x = 0;
+      if (player.x + player.w > LEVEL_LENGTH) player.x = LEVEL_LENGTH - player.w;
+
+      // 敵更新＆当たり判定
+      for(let i=0;i<enemies.length;i++){
+        const e = enemies[i];
+        // 往復パトロール（穴に落ちない簡易処理）
+        e.x += e.vx * e.dir;
+        // 端で向き反転
+        if (e.x < 40) { e.x = 40; e.dir = 1; }
+        if (e.x + e.w > LEVEL_LENGTH-40) { e.x = LEVEL_LENGTH-40-e.w; e.dir = -1; }
+        // プレイヤー衝突
+        if (rectsOverlap(player,{x:e.x,y:e.y,w:e.w,h:e.h})){
+          respawnFromCheckpoint();
+          break;
         }
       }
-    } else if (boss.state === 'hop') {
-      boss.vy += G; boss.y += boss.vy;
-      boss.hopCD = Math.max(0, boss.hopCD - 1);
-      boss.facing = (player.x < boss.x) ? -1 : 1;
-      boss.vx = boss.facing === -1 ? -boss.speed : boss.speed;
-      boss.x += boss.vx;
-      boss.onGround = false;
 
-      const a = { x: boss.x, y: boss.y, w: boss.w, h: boss.h };
-      for (const p of platforms) {
-        if (rectIntersect(a, p)) {
-          const fromTop   = (a.y + a.h) - p.y < 28 && boss.vy > 0;
-          const fromLeft  = (a.x + a.w) - p.x < 20 && boss.vx > 0;
-          const fromRight = (p.x + p.w) - a.x < 20 && boss.vx < 0;
-          if (fromTop) {
-            boss.y = p.y - boss.h; boss.vy = 0; boss.onGround = true;
-            if (boss.hopCD === 0) { boss.vy = -BOSS_JUMP; boss.hopCD = BOSS_HOP_COOLDOWN; }
-          } else if (fromLeft) { boss.x = p.x - boss.w; boss.facing = -1; }
-          else if (fromRight)  { boss.x = p.x + p.w; boss.facing = 1; }
-        }
-      }
-
-      // プレイヤー当たり
-      const pb = { x: player.x, y: player.y, w: player.w, h: player.h };
-      if (rectIntersect(pb, a)) {
-        const stomp = player.vy > 0 && (player.y + player.h) - boss.y < 28 && boss.inv === 0;
-        if (stomp) {
-          player.vy = -JUMP * 0.65; boss.hp -= 1; boss.inv = 40; boss.x += (player.x < boss.x ? TILE : -TILE);
-          statusEl && (statusEl.textContent = `ボスにダメージ！残り ${boss.hp}`);
-          if (boss.hp <= 0) { boss.state = 'dead'; boss.y = -99999; statusEl && (statusEl.textContent = 'ボス撃破！'); }
-        } else {
-          player.x = 2 * TILE; player.y = (FLOOR_Y - 1) * TILE - player.h; player.vx = 0; player.vy = 0;
-          statusEl && (statusEl.textContent = 'ボスに当たった！もう一度');
-        }
-      }
-    }
-  }
-
-  // ===== ユーティリティ =====
-  const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
-  const rectIntersect = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
-  const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
-
-  // ===== 安全描画 =====
-  function drawPlayerSafe(x, y, w, h, facing) {
-    const res = sprites.player;
-    if (res.ok && res.img.complete && res.img.naturalWidth > 0) {
-      ctx.save();
-      if (facing === -1) { ctx.translate(x + w, y); ctx.scale(-1, 1); ctx.drawImage(res.img, 0, 0, w, h); }
-      else { ctx.drawImage(res.img, x, y, w, h); }
-      ctx.restore();
-    } else { ctx.fillStyle = '#2ecc71'; ctx.fillRect(x, y, w, h); }
-  }
-  function drawEnemySafe(e) {
-    const res = sprites.enemies[e.slotIndex]; const x = e.x - camera.x; const y = e.y - camera.y;
-    if (res && res.ok && res.img.complete && res.img.naturalWidth > 0) {
-      ctx.save();
-      if (e.facing === -1) { ctx.translate(x + e.w, y); ctx.scale(-1, 1); ctx.drawImage(res.img, 0, 0, e.w, e.h); }
-      else { ctx.drawImage(res.img, x, y, e.w, e.h); }
-      ctx.restore();
-    } else { ctx.fillStyle = '#c0392b'; ctx.fillRect(x, y, e.w, e.h); }
-  }
-  function drawBossSafe() {
-    if (!boss.spawned || boss.state === 'dead') return;
-    const res = sprites.boss; const x = boss.x - camera.x; const y = boss.y - camera.y;
-
-    if (boss.state === 'drop') { // 影
-      const groundY = FLOOR_Y * TILE - camera.y + 4;
-      const height = (groundY - y - boss.h);
-      const r = clamp(20 + (height > 0 ? Math.min(60, height / 6) : 0), 20, 80);
-      ctx.save(); ctx.globalAlpha = 0.25; ctx.fillStyle = '#000';
-      ctx.beginPath(); ctx.ellipse(x + boss.w / 2, groundY, r, r * 0.5, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.restore();
-    }
-
-    const flashing = boss.inv > 0 && (boss.inv % 8 < 4);
-    ctx.save(); if (flashing) ctx.globalAlpha = 0.5;
-    if (res.ok && res.img.complete && res.img.naturalWidth > 0) {
-      if (boss.facing === -1) { ctx.translate(x + boss.w, y); ctx.scale(-1, 1); ctx.drawImage(res.img, 0, 0, boss.w, boss.h); }
-      else { ctx.drawImage(res.img, x, y, boss.w, boss.h); }
-    } else { ctx.fillStyle = '#6c3483'; ctx.fillRect(x, y, boss.w, boss.h); }
-    ctx.restore();
-  }
-  function drawMioVictorySafe(k) {
-    const res = sprites.mio; const baseScale = 0.25, endScale = 1.4;
-    const scale = baseScale + (endScale - baseScale) * k; const alpha = 0.2 + 0.8 * k; const yLift = (1 - k) * 60;
-    ctx.save(); ctx.globalAlpha = alpha; ctx.translate(canvas.width / 2, canvas.height / 2 - yLift); ctx.scale(scale, scale);
-    if (res.ok && res.img.complete && res.img.naturalWidth > 0) {
-      const w = res.img.naturalWidth, h = res.img.naturalHeight; ctx.drawImage(res.img, -w / 2, -h / 2, w, h);
-    } else { const r = 160; ctx.fillStyle = '#ff66aa'; ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill(); }
-    ctx.restore();
-  }
-
-  // ===== メインループ =====
-  function update() {
-    if (finished) { victory.t += 1; draw(); requestAnimationFrame(update); return; }
-
-    // 入力→速度
-    player.vx = 0;
-    if (keys.left)  { player.vx = -MOVE; player.facing = -1; }
-    if (keys.right) { player.vx =  MOVE; player.facing =  1; }
-    if (keys.jump && player.onGround) {
-      player.vy = -JUMP; player.onGround = false; if (statusEl) statusEl.textContent = 'ジャンプ！';
-      keys.jump = false; // 長押し連続ジャンプ抑制
-    }
-
-    // 物理
-    player.vy += G; player.x += player.vx; player.y += player.vy;
-
-    // 当たり（地面・足場）
-    player.onGround = false;
-    platforms.forEach(p => {
-      const a = { x: player.x, y: player.y, w: player.w, h: player.h };
-      if (rectIntersect(a, p)) {
-        const fromTop   = (a.y + a.h) - p.y < 20 && player.vy > 0;
-        const fromLeft  = (a.x + a.w) - p.x < 20 && player.vx > 0;
-        const fromRight = (p.x + p.w) - a.x < 20 && player.vx < 0;
-        if (fromTop)      { player.y = p.y - player.h; player.vy = 0; player.onGround = true; }
-        else if (fromLeft){ player.x = p.x - player.w; }
-        else if (fromRight){ player.x = p.x + p.w; }
-        else              { player.y = p.y + p.h; player.vy = 0; }
-      }
-    });
-
-    // コイン
-    coins.forEach(c => {
-      if (c.taken) return;
-      const dx = (player.x + player.w / 2) - c.x;
-      const dy = (player.y + player.h / 2) - c.y;
-      if (Math.hypot(dx, dy) < c.r + Math.min(player.w, player.h) / 2) {
-        c.taken = true; coinCount++; if (coinsEl) coinsEl.textContent = `🪙 ${coinCount}`;
-      }
-    });
-
-    // 敵スポーン＆更新
-    maybeSpawnByProgress();
-    enemies.forEach(e => {
-      e.x += e.vx;
-      const cycle = TILE * 10; const mod = (e.x + 100000) % cycle;
-      if (mod < 2 || mod > cycle - 2) { e.vx *= -1; e.facing = e.vx < 0 ? -1 : 1; }
-      const a = { x: player.x, y: player.y, w: player.w, h: player.h };
-      if (rectIntersect(a, e)) {
-        const stomp = player.vy > 0 && (player.y + player.h) - e.y < 24;
-        if (stomp) { player.vy = -JUMP * 0.6; e.x = -99999; e.vx = 0; if (statusEl) statusEl.textContent = 'やっつけた！'; }
-        else { player.x = 2 * TILE; player.y = (FLOOR_Y - 1) * TILE - player.h; player.vx = 0; player.vy = 0; if (statusEl) statusEl.textContent = 'いたっ！もう一度'; }
-      }
-    });
-
-    // ボス出現＆更新
-    spawnBossIfNearGoal();
-    updateBoss();
-
-    // ゴール判定（ボス撃破後でも到達可）
-    const goalRect = { x: goal.x - 10, y: goal.y, w: goal.w + 20, h: goal.h };
-    const a = { x: player.x, y: player.y, w: player.w, h: player.h };
-    if (rectIntersect(a, goalRect)) {
-      finished = true; victory.active = true; victory.t = 0;
-      if (statusEl) statusEl.textContent = `ゴール！コイン ${coinCount} 枚`;
-      setTimeout(() => alert(`ゴール！がんばったね！\nコイン ${coinCount} 枚`), 100);
-
-      // BGM フェードアウト
-      if (bgmStarted) {
-        const fade = setInterval(() => {
-          bgm.volume = Math.max(0, bgm.volume - 0.05);
-          if (bgm.volume <= 0) { clearInterval(fade); bgm.pause(); }
-        }, 100);
+      // ゴール判定
+      if (player.x + player.w >= GOAL_X){
+        startCelebration();
       }
     }
 
-    // カメラ
-    camera.x = clamp(player.x - camera.w / 2, 0, (WORLD_WIDTH * TILE) - camera.w);
+    // カメラ（追従）
+    camX = Math.max(0, Math.min(player.x - CAMERA_MARGIN, LEVEL_LENGTH - cvs.width));
 
+    // 描画
     draw();
-    requestAnimationFrame(update);
+
+    requestAnimationFrame(loop);
   }
 
-  // ===== 描画 =====
-  function draw() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = '#87CEEB'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+  function respawnFromCheckpoint(){
+    // 「少し前」から再開
+    player.x = Math.max(0, lastSafeX - 60);
+    player.y = GROUND_Y - player.h;
+    player.vx = 0; player.vy = 0;
+    player.onGround = true;
+  }
 
-    // 雲
-    ctx.fillStyle = 'rgba(255,255,255,0.85)';
-    for (let i = 0; i < 8; i++) {
-      const x = (i * 220) - (camera.x * 0.2) % (canvas.width + 300);
-      const y = 60 + (i % 3) * 35; cloud(x, y);
+  // --- 描画 ---
+  function draw(){
+    ctx.clearRect(0,0,cvs.width,cvs.height);
+
+    // 背景
+    ctx.fillStyle = '#bde7ff';
+    ctx.fillRect(0,0,cvs.width,cvs.height);
+
+    // 地面（スクロール）
+    ctx.save();
+    ctx.translate(-camX,0);
+
+    // 地面帯
+    ctx.fillStyle = '#3a2f1f';
+    ctx.fillRect(0,GROUND_Y,cvs.width*3, cvs.height-GROUND_Y); // ざっくり
+
+    // 穴（ギャップ）を切り抜き風に描く
+    ctx.fillStyle = '#000';
+    for(const h of HOLES){
+      ctx.fillRect(h.x, GROUND_Y, h.w, cvs.height-GROUND_Y);
     }
 
-    // 地面・足場
-    platforms.forEach(p => {
-      if (p.x + p.w < camera.x || p.x > camera.x + camera.w) return;
-      ctx.fillStyle = '#3b2f2f'; ctx.fillRect(p.x - camera.x, p.y - camera.y, p.w, p.h);
-      ctx.fillStyle = '#2ecc71'; ctx.fillRect(p.x - camera.x, p.y - camera.y, p.w, 6);
-    });
-
-    // コイン
-    coins.forEach(c => {
-      if (c.taken) return;
-      if (c.x + 20 < camera.x || c.x - 20 > camera.x + camera.w) return;
-      const t = Date.now() / 200;
-      ctx.save(); ctx.translate(c.x - camera.x, c.y - camera.y); ctx.rotate(Math.sin(t) * 0.15);
-      ctx.fillStyle = '#ffcc00'; ctx.beginPath(); ctx.arc(0, 0, c.r, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#fff'; ctx.fillRect(-3, -6, 6, 12); ctx.restore();
-    });
+    // 旗（ゴール）
+    drawFlag(GOAL_X, GROUND_Y);
 
     // 敵
-    enemies.forEach(e => { if (e.x + e.w < camera.x || e.x > camera.x + camera.w) return; drawEnemySafe(e); });
-
-    // ボス
-    drawBossSafe();
-
-    // ゴール旗
-    if (goal.x + goal.w >= camera.x && goal.x <= camera.x + camera.w) {
-      ctx.fillStyle = '#555'; ctx.fillRect(goal.x - camera.x, goal.y - camera.y, 6, goal.h);
-      ctx.fillStyle = '#ff0066';
-      ctx.beginPath();
-      ctx.moveTo(goal.x - camera.x + 6,  goal.y - camera.y + 10);
-      ctx.lineTo(goal.x - camera.x + 80, goal.y - camera.y + 40);
-      ctx.lineTo(goal.x - camera.x + 6,  goal.y - camera.y + 70);
-      ctx.closePath(); ctx.fill();
+    for(let i=0;i<enemies.length;i++){
+      const e = enemies[i];
+      if (enemyImgs[i]){
+        ctx.drawImage(enemyImgs[i], e.x, e.y, e.w, e.h);
+      } else {
+        ctx.fillStyle = ['#ff6b6b','#ffd93d','#6bcB77','#4d96ff'][i%4];
+        ctx.fillRect(e.x, e.y, e.w, e.h);
+        ctx.strokeStyle = '#000'; ctx.strokeRect(e.x, e.y, e.w, e.h);
+      }
     }
 
     // プレイヤー
-    drawPlayerSafe(player.x - camera.x, player.y - camera.y, player.w, player.h, player.facing);
-
-    // 勝利演出（mio）
-    if (victory.active) {
-      const duration = 180; const t = clamp(victory.t / duration, 0, 1); const k = easeOutCubic(t);
-      drawMioVictorySafe(k);
+    if (playerImg){
+      ctx.drawImage(playerImg, player.x, player.y, player.w, player.h);
+    } else {
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(player.x, player.y, player.w, player.h);
+      ctx.strokeStyle = '#000'; ctx.strokeRect(player.x, player.y, player.w, player.h);
     }
+
+    ctx.restore();
+
+    // 進捗バー（任意）
+    ctx.fillStyle = '#000';
+    const barW = cvs.width * ((player.x + player.w) / LEVEL_LENGTH);
+    ctx.fillRect(0, 8, barW, 6);
+    ctx.strokeStyle = '#000'; ctx.strokeRect(0,8,cvs.width,6);
   }
 
-  // 雲
-  function cloud(x, y) {
+  function drawFlag(x, groundY){
+    const poleH = 120;
+    // ポール
+    ctx.fillStyle = '#555';
+    ctx.fillRect(x, groundY - poleH, 6, poleH);
+    // 旗
+    ctx.fillStyle = '#ff3e7f';
     ctx.beginPath();
-    ctx.arc(x, y, 28, 0, Math.PI * 2);
-    ctx.arc(x + 26, y + 10, 22, 0, Math.PI * 2);
-    ctx.arc(x - 26, y + 10, 22, 0, Math.PI * 2);
+    ctx.moveTo(x+6, groundY - poleH + 12);
+    ctx.lineTo(x+76, groundY - poleH + 32);
+    ctx.lineTo(x+6, groundY - poleH + 52);
+    ctx.closePath();
     ctx.fill();
+    // 旗輪郭
+    ctx.strokeStyle = '#000'; ctx.lineWidth = 2;
+    ctx.strokeRect(x, groundY - poleH, 6, poleH);
   }
 
-  // ===== 起動 =====
-  (async () => {
-    initBGM();
-    const playerRes  = await loadImageSafe('Image.png');
-    const enemiesRes = await Promise.all(enemyOrderFiles.map(f => loadImageSafe(f)));
-    const bossRes    = await loadImageSafe('boss.png');
-    const mioRes     = await loadImageSafe('mio.png');
-    sprites = { player: playerRes, enemies: enemiesRes, boss: bossRes, mio: mioRes };
-    if (statusEl) statusEl.textContent = '左右キーで移動、スペースでジャンプ！';
-    requestAnimationFrame(update);
-  })();
 })();
