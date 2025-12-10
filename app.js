@@ -31,8 +31,10 @@
       await bgm.play();
       bgmReady = true; bgmStarted = true;
       document.removeEventListener('pointerdown', tryStartBGMOnce, { once: true });
-      document.removeEventListener('touchstart', tryStartBGMOnce, { once: true });
-    } catch (err) { console.warn('BGM再生に失敗:', err); }
+      document.removeEventListener('touchstart',  tryStartBGMOnce, { once: true });
+    } catch (err) {
+      console.warn('BGM再生に失敗:', err);
+    }
   }
 
   // ===== 入力 =====
@@ -56,18 +58,18 @@
     const down = ev => { ev.preventDefault(); tryStartBGMOnce(); keys[keyName] = true; el.classList.add('active'); };
     const up   = ev => { ev.preventDefault(); keys[keyName] = false; el.classList.remove('active'); };
 
-    el.addEventListener('pointerdown', down, { passive: false });
-    el.addEventListener('pointerup', up,   { passive: false });
-    el.addEventListener('pointerleave', up,{ passive: false });
-    el.addEventListener('pointercancel', up,{ passive: false });
+    el.addEventListener('pointerdown',  down, { passive: false });
+    el.addEventListener('pointerup',    up,   { passive: false });
+    el.addEventListener('pointerleave', up,   { passive: false });
+    el.addEventListener('pointercancel',up,   { passive: false });
 
-    el.addEventListener('touchstart', down,  { passive: false });
-    el.addEventListener('touchend', up,      { passive: false });
-    el.addEventListener('touchcancel', up,   { passive: false });
+    el.addEventListener('touchstart',   down, { passive: false });
+    el.addEventListener('touchend',     up,   { passive: false });
+    el.addEventListener('touchcancel',  up,   { passive: false });
   }
-  bindTouchHold('btn-left', 'left');
-  bindTouchHold('btn-right','right');
-  bindTouchHold('btn-jump', 'jump');
+  bindTouchHold('btn-left',  'left');
+  bindTouchHold('btn-right', 'right');
+  bindTouchHold('btn-jump',  'jump');
 
   canvas.addEventListener('touchstart', ev => ev.preventDefault(), { passive: false });
   canvas.addEventListener('touchmove',  ev => ev.preventDefault(), { passive: false });
@@ -127,7 +129,21 @@
 
   // ===== 通常敵（2倍表示・後半ほど速く） =====
   const enemyOrderFiles = ['mama.png', 'kairi.png', 'pocha.png', 'papa.png'];
-  const spawnX = [18 * TILE, 45 * TILE, 75 * TILE, 110 * TILE];
+
+  // ===== ゴール旗（距離半分）＆カメラ =====
+  // WORLD_WIDTH のほぼ中央へ移設（従来は末尾近くだった）
+  const goal = { x: (Math.floor(WORLD_WIDTH / 2) - 4) * TILE, y: (FLOOR_Y - 5) * TILE, w: 10, h: 200 };
+  const goalTileX = Math.floor(goal.x / TILE); // 目安用（≈ 96）
+  const camera = { x: 0, y: 0, w: canvas.width, h: canvas.height };
+
+  // 敵の出現位置（ゴール半分仕様でも全員出現するよう調整）
+  const spawnX = [
+    18 * TILE,               // mama
+    45 * TILE,               // kairi
+    75 * TILE,               // pocha
+    (goalTileX - 8) * TILE   // papa（ゴールの少し手前）
+  ];
+
   let nextEnemyIndex = 0;
   const enemies = [];
   function spawnNextEnemy() {
@@ -141,11 +157,6 @@
   function maybeSpawnByProgress() {
     if (nextEnemyIndex < spawnX.length && player.x > spawnX[nextEnemyIndex] - TILE * 2) spawnNextEnemy();
   }
-
-  // ===== ゴール旗（距離半分）＆カメラ =====
-  // WORLD_WIDTH のほぼ中央へ移設（従来は末尾近くだった）
-  const goal = { x: (Math.floor(WORLD_WIDTH / 2) - 4) * TILE, y: (FLOOR_Y - 5) * TILE, w: 10, h: 200 };
-  const camera = { x: 0, y: 0, w: canvas.width, h: canvas.height };
 
   // ===== 状態 =====
   let coinCount = 0;
@@ -331,8 +342,8 @@
         const stomp = player.vy > 0 && (player.y + player.h) - e.y < 24;
         if (stomp) { player.vy = -JUMP * 0.6; e.x = -99999; e.vx = 0; if (statusEl) statusEl.textContent = 'やっつけた！'; }
         else {
-          // ★ 敵接触時は“その場から少し戻す”リスタート
-          const rewindTiles = 4;
+          // ★ 敵接触時は“その場から少し戻す”リスタート（スタート地点に戻さない）
+          const rewindTiles = 4; // 少し戻す（≈ 4タイル分）
           player.x = clamp(player.x - rewindTiles * TILE, 0, WORLD_WIDTH * TILE - player.w);
           player.y = (FLOOR_Y - 1) * TILE - player.h;
           player.vx = 0; player.vy = 0;
